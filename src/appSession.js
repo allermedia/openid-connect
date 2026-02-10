@@ -1,0 +1,359 @@
+import { strict as assert, AssertionError } from 'node:assert';
+
+import { parse, serialize } from 'cookie';
+import onHeaders from 'on-headers';
+
+import COOKIES from './cookies.js';
+import { getKeyStore, verifyCookie, signCookie, encrypt, decrypt } from './crypto.js';
+import debug from './debug.js';
+import safePromisify from './utils/promisifyCompat.js';
+
+const epoch = () => (Date.now() / 1000) | 0;
+const MAX_COOKIE_SIZE = 4096;
+
+const REASSIGN = Symbol('reassign');
+const REGENERATED_SESSION_ID = Symbol('regenerated_session_id');
+
+function attachSessionObject(req, sessionName, value) {
+  Object.defineProperty(req, sessionName, {
+    enumerable: true,
+    get() {
+      return value;
+    },
+    set(arg) {
+      if (arg === null || arg === undefined || arg[REASSIGN]) {
+        value = arg;
+      } else {
+        throw new TypeError('session object cannot be reassigned');
+      }
+      return undefined;
+    },
+  });
+}
+
+export async function regenerateSessionStoreId(req, config) {
+  if (config.session.store) {
+    req[REGENERATED_SESSION_ID] = await config.session.genid(req);
+  }
+}
+
+export function replaceSession(req, session, config) {
+  if (session !== null && session !== undefined) {
+    session[REASSIGN] = true;
+  }
+  req[config.session.name] = session;
+}
+
+export default function appSession(config) {
+  const sessionName = config.session.name;
+  const cookieConfig = config.session.cookie;
+  const {
+    genid: generateId,
+    absoluteDuration,
+    rolling: rollingEnabled,
+    rollingDuration,
+    signSessionStoreCookie,
+    requireSignedSessionStoreCookie,
+  } = config.session;
+
+  const { transient: emptyTransient, ...emptyCookieOptions } = cookieConfig;
+  emptyCookieOptions.expires = emptyTransient ? 0 : new Date();
+  emptyCookieOptions.path = emptyCookieOptions.path || '/';
+
+  const emptyCookie = serialize(`${sessionName}.0`, '', emptyCookieOptions);
+  const cookieChunkSize = MAX_COOKIE_SIZE - emptyCookie.length;
+
+  let [current, keystore] = getKeyStore(config.secret, true);
+  if (keystore.length === 1) {
+    keystore = current;
+  }
+
+  function calculateExp(iat, uat) {
+    if (!rollingEnabled) {
+      return iat + absoluteDuration;
+    }
+
+    if (!absoluteDuration) {
+      return uat + rollingDuration;
+    }
+
+    return Math.min(uat + rollingDuration, iat + absoluteDuration);
+  }
+
+  function setCookie(req, res, { uat = epoch(), iat = uat, exp = calculateExp(iat, uat) }) {
+    const cookies = req[COOKIES];
+    const { transient: cookieTransient, ...cookieOptions } = cookieConfig;
+    cookieOptions.expires = cookieTransient ? 0 : new Date(exp * 1000);
+
+    // session was deleted or is empty, this matches all session cookies (chunked or unchunked)
+    // and clears them, essentially cleaning up what we've set in the past that is now trash
+    if (!req[sessionName] || !Object.keys(req[sessionName]).length) {
+      debug('session was deleted or is empty, clearing all matching session cookies');
+      for (const cookieName of Object.keys(cookies)) {
+        if (cookieName.match(`^${sessionName}(?:\\.\\d)?$`)) {
+          clearCookie(cookieName, res);
+        }
+      }
+    } else {
+      debug('found session, creating signed session cookie(s) with name %o(.i)', sessionName);
+
+      const value = encrypt(current, JSON.stringify(req[sessionName]), {
+        iat,
+        uat,
+        exp,
+      });
+
+      const chunkCount = Math.ceil(value.length / cookieChunkSize);
+
+      if (chunkCount > 1) {
+        debug('cookie size greater than %d, chunking', cookieChunkSize);
+        for (let i = 0; i < chunkCount; i++) {
+          const chunkValue = value.slice(i * cookieChunkSize, (i + 1) * cookieChunkSize);
+
+          const chunkCookieName = `${sessionName}.${i}`;
+          res.cookie(chunkCookieName, chunkValue, cookieOptions);
+        }
+        if (sessionName in cookies) {
+          debug('replacing non chunked cookie with chunked cookies');
+          clearCookie(sessionName, res);
+        }
+      } else {
+        res.cookie(sessionName, value, cookieOptions);
+        for (const cookieName of Object.keys(cookies)) {
+          debug('replacing chunked cookies with non chunked cookies');
+          if (cookieName.match(`^${sessionName}\\.\\d$`)) {
+            clearCookie(cookieName, res);
+          }
+        }
+      }
+    }
+  }
+
+  function clearCookie(name, res) {
+    const { domain, path, sameSite, secure } = cookieConfig;
+    res.clearCookie(name, {
+      domain,
+      path,
+      sameSite,
+      secure,
+    });
+  }
+
+  class CookieStore {
+    get(idOrVal) {
+      const { payload, protected: header } = decrypt(keystore, idOrVal);
+      return {
+        header,
+        data: JSON.parse(payload),
+      };
+    }
+
+    getCookie(req) {
+      return req[COOKIES][sessionName];
+    }
+
+    setCookie(req, res, iat) {
+      setCookie(req, res, iat);
+    }
+  }
+
+  class CustomStore {
+    constructor(store) {
+      this._get = safePromisify(store.get, store);
+      this._set = safePromisify(store.set, store);
+      this._destroy = safePromisify(store.destroy, store);
+
+      const [current, keystore] = getKeyStore(config.secret);
+      // Always keep keystore as an array for consistency with verifySignature
+      this._keyStore = keystore;
+      this._current = current;
+    }
+
+    get(id) {
+      return Promise.resolve(this._get(id));
+    }
+
+    async set(id, req, _res, { uat = epoch(), iat = uat, exp = calculateExp(iat, uat) }) {
+      const hasPrevSession = !!req[COOKIES][sessionName];
+      const replacingPrevSession = !!req[REGENERATED_SESSION_ID];
+      const hasCurrentSession = req[sessionName] && Object.keys(req[sessionName]).length;
+      if (hasPrevSession && (replacingPrevSession || !hasCurrentSession)) {
+        await this._destroy(id);
+      }
+      if (hasCurrentSession) {
+        await this._set(req[REGENERATED_SESSION_ID] || id, {
+          header: { iat, uat, exp },
+          data: req[sessionName],
+          cookie: {
+            expires: exp * 1000,
+            maxAge: exp * 1000 - Date.now(),
+          },
+        });
+      }
+    }
+
+    getCookie(req) {
+      if (signSessionStoreCookie) {
+        const verified = verifyCookie(sessionName, req[COOKIES][sessionName], this._keyStore);
+        if (requireSignedSessionStoreCookie) {
+          return verified;
+        }
+        return verified || req[COOKIES][sessionName];
+      }
+      return req[COOKIES][sessionName];
+    }
+
+    setCookie(id, req, res, { uat = epoch(), iat = uat, exp = calculateExp(iat, uat) }) {
+      if (!req[sessionName] || !Object.keys(req[sessionName]).length) {
+        if (req[COOKIES][sessionName]) {
+          clearCookie(sessionName, res);
+        }
+      } else {
+        const cookieOptions = {
+          ...cookieConfig,
+          expires: cookieConfig.transient ? 0 : new Date(exp * 1000),
+        };
+        delete cookieOptions.transient;
+        let value = id;
+        if (signSessionStoreCookie) {
+          value = signCookie(sessionName, id, this._current);
+        }
+        res.cookie(sessionName, value, cookieOptions);
+      }
+    }
+  }
+
+  const isCustomStore = !!config.session.store;
+  const store = isCustomStore ? new CustomStore(config.session.store) : new CookieStore();
+
+  return async (req, res, next) => {
+    if (sessionName in req) {
+      debug('request object (req) already has %o property, this is indicative of a middleware setup problem', sessionName);
+      return next(new Error(`req[${sessionName}] is already set, did you run this middleware twice?`));
+    }
+
+    req[COOKIES] = parse(req.get('cookie') || '');
+
+    let iat;
+    let uat;
+    let exp;
+    let existingSessionValue;
+
+    try {
+      if (sessionName in req[COOKIES]) {
+        // get JWE from unchunked session cookie
+        debug('reading session from %s cookie', sessionName);
+        existingSessionValue = store.getCookie(req);
+      } else if (`${sessionName}.0` in req[COOKIES]) {
+        // get JWE from chunked session cookie
+        // iterate all cookie names
+        // match and filter for the ones that match sessionName.<number>
+        // sort by chunk index
+        // concat
+        existingSessionValue = Object.entries(req[COOKIES])
+          .map(([cookie, value]) => {
+            const match = cookie.match(`^${sessionName}\\.(\\d+)$`);
+            if (match) {
+              return [match[1], value];
+            }
+          })
+          .filter(Boolean)
+          .sort(([a], [b]) => {
+            return parseInt(a, 10) - parseInt(b, 10);
+          })
+          .map(([i, chunk]) => {
+            debug('reading session chunk from %s.%d cookie', sessionName, i);
+            return chunk;
+          })
+          .join('');
+      }
+      if (existingSessionValue) {
+        const sessionData = await store.get(existingSessionValue);
+
+        // Handle case where store.get() returns undefined/null due to Redis replication lag
+        // or race conditions in multi-instance deployments
+        if (!sessionData || typeof sessionData !== 'object') {
+          debug('session data not found or invalid, treating as expired session');
+          // Skip to creating new session - this will be handled by the code after the try block
+        } else {
+          const { header, data } = sessionData;
+
+          // Ensure header exists and has required properties
+          if (!header || typeof header !== 'object') {
+            debug('session header missing or invalid, treating as expired session');
+          } else {
+            ({ iat, uat, exp } = header);
+
+            // check that the existing session isn't expired based on options when it was established
+            assert(exp > epoch(), 'it is expired based on options when it was established');
+
+            // check that the existing session isn't expired based on current rollingDuration rules
+            if (rollingDuration) {
+              assert(uat + rollingDuration > epoch(), 'it is expired based on current rollingDuration rules');
+            }
+
+            // check that the existing session isn't expired based on current absoluteDuration rules
+            if (absoluteDuration) {
+              assert(iat + absoluteDuration > epoch(), 'it is expired based on current absoluteDuration rules');
+            }
+
+            attachSessionObject(req, sessionName, data);
+          }
+        }
+      }
+    } catch (err) {
+      if (err instanceof AssertionError) {
+        debug('existing session was rejected because', err.message);
+      } else {
+        debug('unexpected error handling session', err);
+      }
+    }
+
+    if (!(sessionName in req) || !req[sessionName]) {
+      attachSessionObject(req, sessionName, {});
+    }
+
+    if (isCustomStore) {
+      const id = existingSessionValue || (await generateId(req));
+
+      onHeaders(res, () => {
+        // Use async IIFE to handle async setCookie
+        (async () => {
+          try {
+            await store.setCookie(req[REGENERATED_SESSION_ID] || id, req, res, {
+              iat,
+            });
+          } catch {
+            debug('Error setting cookie in onHeaders:');
+          }
+        })();
+      });
+
+      const { end: origEnd } = res;
+      res.end = async function resEnd(...args) {
+        try {
+          await store.set(id, req, res, {
+            iat,
+          });
+          origEnd.call(res, ...args);
+        } catch (e) {
+          // need to restore the original `end` so that it gets
+          // called after `next(e)` calls the express error handling mw
+          res.end = origEnd;
+          process.nextTick(() => next(e));
+        }
+      };
+    } else {
+      onHeaders(res, () => {
+        try {
+          store.setCookie(req, res, { iat });
+        } catch (error) {
+          // eslint-disable-next-line no-console
+          console.error('Error setting cookie in onHeaders:', error);
+        }
+      });
+    }
+
+    return next();
+  };
+}

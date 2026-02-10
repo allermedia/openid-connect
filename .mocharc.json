@@ -1,0 +1,8 @@
+{
+  "extension": ["js"],
+  "timeout": 10000,
+  "recursive": true,
+  "file": "./test/setup.js",
+  "require": ["chai/register-expect.js"],
+  "node-option": ["no-warnings"]
+}
