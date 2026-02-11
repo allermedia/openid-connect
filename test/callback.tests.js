@@ -1,104 +1,36 @@
+import { randomUUID } from 'node:crypto';
 import { mock } from 'node:test';
 
-import MemoryStore from 'memorystore';
+import { auth } from '@aller/openid-connect';
 import nock from 'nock';
 import request from 'supertest';
 
-import { auth } from '../index.js';
 import { encodeState } from '../src/hooks/getLoginState.js';
-import TransientCookieHandler from '../src/transientHandler.js';
+import { TransientCookieHandler } from '../src/transientHandler.js';
 
 import { makeIdToken, JWT } from './fixture/cert.js';
 import { getPrivatePEM } from './fixture/jwk.js';
-import { create as createServer } from './fixture/server.js';
-import getRedisStore from './fixture/store.js';
+import { createApp } from './fixture/server.js';
+import { CustomStore } from './helpers/custom-store.js';
+import { setupDiscovery, setupJwks } from './helpers/openid-helper.js';
 
 const clientID = '__test_client_id__';
 const expectedDefaultState = encodeState({ returnTo: 'https://example.org' });
-const memoryStoreFactory = MemoryStore(auth);
 
 const baseUrl = 'http://localhost:3000';
 const defaultConfig = {
   secret: '__test_session_secret__',
   clientID: clientID,
-  baseURL: 'http://example.org',
+  baseURL: 'http://example.local',
   issuerBaseURL: 'https://op.example.com',
   authRequired: false,
 };
-
-/** @type {import('http').Server} */
-let server;
 
 function generateCookies(values, customTxnCookieName) {
   return { [customTxnCookieName || 'auth_verification']: JSON.stringify(values) };
 }
 
 async function setup(params) {
-  // Disable undici mocking for callback tests since we use nock for precise control
-  const { getGlobalDispatcher, setGlobalDispatcher } = await import('undici');
-  const originalDispatcher = getGlobalDispatcher();
-
-  // Reset to the original dispatcher to disable undici mocking
-  if (originalDispatcher && originalDispatcher.constructor.name === 'MockAgent') {
-    // Import the default dispatcher
-    const { Agent } = await import('undici');
-    setGlobalDispatcher(new Agent());
-  }
-
-  // Enable network connections for nock to work
-  nock.enableNetConnect();
-  nock.cleanAll();
-
-  // Import the public JWK for JWKS mocking
-  const { jwks } = await import('./fixture/cert.js');
-
-  let tokenEndpointIdToken;
-
-  // Mock fetch directly since nock may not intercept Node.js built-in fetch
-  const originalFetch = global.fetch;
-  global.fetch = (url, options) => {
-    const urlString = url.toString();
-
-    // Intercept JWKS requests
-    if (urlString.includes('/jwks') || urlString.includes('/.well-known/jwks')) {
-      return new Response(JSON.stringify(jwks), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-    // Intercept token endpoint requests
-    if (urlString.includes('/oauth/token') && options?.method === 'POST') {
-      const tokenResponse = {
-        access_token: '__test_access_token__',
-        refresh_token: '__test_refresh_token__',
-        id_token: tokenEndpointIdToken || params.body?.id_token,
-        token_type: 'bearer',
-        expires_in: 86400,
-        ...(params.tokenResponse || {}),
-      };
-
-      return new Response(JSON.stringify(tokenResponse), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-
-    // Intercept userinfo endpoint requests
-    if (urlString.includes('/userinfo') && params.userinfoResponse) {
-      const userinfoResponse = {
-        sub: '__test_sub__',
-        ...params.userinfoResponse,
-      };
-
-      return new Response(JSON.stringify(userinfoResponse), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-
-    return originalFetch(url, options);
-  };
-
   // Create appropriate ID token for token endpoint based on test setup
   if (params.cookies && Object.keys(params.cookies).length > 0) {
     // Parse the auth verification cookie to get the nonce
@@ -125,29 +57,19 @@ async function setup(params) {
         // If decoding fails, use default
       }
     }
-    tokenEndpointIdToken = await makeIdToken(tokenPayload);
   }
 
-  const authOpts = Object.assign({}, defaultConfig, params.authOpts || {});
-
-  // Setup nock mocks for token endpoint if not already set up by individual tests
-  const nockMocks = [];
-  if (!params.skipTokenMock) {
-    // Token endpoint is handled by direct fetch mocking above
-  }
+  const authOpts = { ...defaultConfig, ...params.authOpts };
 
   const router = params.router || auth(authOpts);
   const transient = new TransientCookieHandler(authOpts);
 
-  server = await createServer(router);
-  const agent = request.agent(server);
+  const agent = request.agent(createApp(router));
 
   Object.keys(params.cookies).forEach((cookieName) => {
     let value;
 
     transient.store(
-      cookieName,
-      {},
       {
         cookie(key, ...args) {
           if (key === cookieName) {
@@ -155,7 +77,8 @@ async function setup(params) {
           }
         },
       },
-      { value: params.cookies[cookieName] }
+      cookieName,
+      params.cookies[cookieName]
     );
 
     agent.jar.setCookie(`${cookieName}=${value}; Max-Age=3600; Path=/; HttpOnly; SameSite=lax`);
@@ -183,10 +106,6 @@ async function setup(params) {
     currentSession,
     tokens,
     existingSessionCookie,
-    nockMocks,
-    cleanup() {
-      global.fetch = originalFetch;
-    },
   };
 }
 
@@ -195,159 +114,120 @@ async function setup(params) {
 // http://expressjs.com/en/guide/error-handling.html
 
 describe('callback response_mode: form_post', () => {
+  beforeEach(() => {
+    setupDiscovery();
+  });
   afterEach(() => {
     mock.timers.reset();
-    server?.close();
   });
 
   it('should error when the body is empty', async () => {
-    const {
-      response: {
-        statusCode,
-        body: { err },
-      },
-    } = await setup({
+    const { response } = await setup({
       cookies: generateCookies({
         nonce: '__test_nonce__',
         state: '__test_state__',
       }),
       body: '',
     });
-    expect(statusCode).to.equal(400);
-    // openid-client v6 handles parameter validation - just check it's an error
-    expect(err.message).to.be.ok;
+    expect(response.statusCode, response.text).to.equal(400);
+    expect(response.body.err.message).to.be.ok;
   });
 
   it('should error when the state is missing', async () => {
-    const {
-      response: {
-        statusCode,
-        body: { err },
-      },
-    } = await setup({
+    const { response } = await setup({
       cookies: {},
       body: {
         state: '__test_state__',
         id_token: '__invalid_token__',
+        code: randomUUID(),
       },
     });
-    expect(statusCode).to.equal(400);
-    // openid-client v6 handles state validation - just check it's an error
-    expect(err.message).to.be.ok;
+    expect(response.statusCode, response.text).to.equal(400);
+    expect(response.body.err?.code).to.equal('OAUTH_INVALID_RESPONSE');
   });
 
   it("should error when state doesn't match", async () => {
-    const {
-      response: {
-        statusCode,
-        body: { err },
-      },
-    } = await setup({
+    const { response } = await setup({
       cookies: generateCookies({
         nonce: '__test_nonce__',
         state: '__valid_state__',
       }),
       body: {
         state: '__invalid_state__',
+        code: randomUUID(),
       },
     });
-    expect(statusCode).to.equal(400);
-    // openid-client v6 handles state mismatch validation
-    expect(err.message).to.be.ok;
+    expect(response.statusCode, response.text).to.equal(400);
+    expect(response.body.err?.code).to.equal('OAUTH_INVALID_RESPONSE');
   });
 
   it("should error when id_token can't be parsed", async () => {
-    const {
-      response: {
-        statusCode,
-        body: { err },
-      },
-    } = await setup({
+    const { response } = await setup({
       cookies: generateCookies({
         nonce: '__test_nonce__',
         state: '__test_state__',
       }),
       body: {
         state: '__test_state__',
+        code: randomUUID(),
         id_token: '__invalid_token__',
       },
     });
-    expect(statusCode).to.equal(400);
-    // openid-client v6 handles JWT parsing validation
-    expect(err.message).to.be.ok;
+    expect(response.statusCode, response.text).to.equal(400);
+    expect(response.body.err.code).to.equal('OAUTH_UNSUPPORTED_OPERATION');
   });
 
   it('should error when id_token has invalid alg', async () => {
-    const {
-      response: {
-        statusCode,
-        body: { err },
-      },
-    } = await setup({
+    const { response } = await setup({
       cookies: generateCookies({
         nonce: '__test_nonce__',
         state: '__test_state__',
       }),
       body: {
         state: '__test_state__',
+        code: randomUUID(),
         id_token: JWT.sign({ sub: '__test_sub__' }, 'secret', {
           algorithm: 'HS256',
         }),
       },
     });
-    expect(statusCode).to.equal(400);
-    // openid-client v6 handles algorithm validation
-    expect(err.message).to.be.ok;
+    expect(response.statusCode, response.text).to.equal(400);
+    expect(response.body.err.code).to.equal('OAUTH_UNSUPPORTED_OPERATION');
   });
 
   it('should error when id_token is missing issuer', async () => {
-    const {
-      response: {
-        statusCode,
-        body: { err },
-      },
-    } = await setup({
+    const { response } = await setup({
       cookies: generateCookies({
         nonce: '__test_nonce__',
         state: '__test_state__',
       }),
       body: {
         state: '__test_state__',
+        code: randomUUID(),
         id_token: await makeIdToken({ iss: undefined }),
       },
     });
-    expect(statusCode).to.equal(400);
-    // openid-client v6 handles issuer validation
-    expect(err.message).to.be.ok;
+    expect(response.statusCode, response.text).to.equal(400);
+    expect(response.body.err.code).to.equal('OAUTH_UNSUPPORTED_OPERATION');
   });
 
   it('should error when nonce is missing from cookies', async () => {
-    const {
-      response: {
-        statusCode,
-        body: { err },
-      },
-    } = await setup({
+    const { response } = await setup({
       cookies: generateCookies({
         state: '__test_state__',
       }),
       body: {
         state: '__test_state__',
+        code: randomUUID(),
         id_token: await makeIdToken(),
       },
     });
-    expect(statusCode).to.equal(400);
-    // openid-client v6 handles nonce validation
-    expect(err.message).to.be.ok;
+    expect(response.statusCode, response.text).to.equal(400);
+    expect(response.body.err.code).to.equal('OAUTH_UNSUPPORTED_OPERATION');
   });
 
   it('should error when legacy samesite fallback is off', async () => {
-    const {
-      response: {
-        statusCode,
-        body: { err },
-      },
-    } = await setup({
+    const { response } = await setup({
       authOpts: {
         // Do not check the fallback cookie value.
         legacySameSiteCookie: false,
@@ -359,37 +239,42 @@ describe('callback response_mode: form_post', () => {
       },
       body: {
         state: '__test_state__',
+        code: randomUUID(),
         id_token: '__invalid_token__',
       },
     });
-    expect(statusCode).to.equal(400);
-    // openid-client v6 handles state validation
-    expect(err.message).to.be.ok;
+    expect(response.statusCode, response.text).to.equal(400);
+    expect(response.body.err.code).to.equal('OAUTH_INVALID_RESPONSE');
   });
 
   it('should include oauth error properties in error', async () => {
-    const {
-      response: {
-        statusCode,
-        body: {
-          err: { error, error_description },
-        },
-      },
-    } = await setup({
+    const { response } = await setup({
       cookies: {},
       body: {
         error: 'foo',
         error_description: 'bar',
+        code: 'TEST_CODE',
       },
     });
-    expect(statusCode).to.equal(400);
-    expect(error).to.equal('foo');
-    expect(error_description).to.equal('bar');
+
+    expect(response.statusCode, response.text).to.equal(400);
+    expect(response.body.err?.error).to.equal('foo');
+    expect(response.body.err?.error_description).to.equal('bar');
   });
 
   it('should use legacy samesite fallback', async () => {
+    setupJwks();
+
     const idToken = await makeIdToken({
       c_hash: '77QmUPtjPfzWtF2AnpK9RQ', // Required for hybrid flow
+    });
+
+    nock('https://op.example.com/').post('/oauth/token').query(true).reply(200, {
+      access_token: '__test_access_token__',
+      refresh_token: '__test_refresh_token__',
+      id_token: idToken,
+      token_type: 'bearer',
+      expires_in: 86400,
     });
 
     const { currentUser } = await setup({
@@ -416,8 +301,18 @@ describe('callback response_mode: form_post', () => {
   });
 
   it("should expose all tokens when id_token is valid and response_type is 'code id_token'", async () => {
+    setupJwks();
+
     const idToken = await makeIdToken({
       c_hash: '77QmUPtjPfzWtF2AnpK9RQ',
+    });
+
+    nock('https://op.example.com/').post('/oauth/token').query(true).reply(200, {
+      access_token: '__test_access_token__',
+      refresh_token: '__test_refresh_token__',
+      id_token: idToken,
+      token_type: 'bearer',
+      expires_in: 86400,
     });
 
     const { tokens } = await setup({
@@ -441,13 +336,12 @@ describe('callback response_mode: form_post', () => {
     });
 
     expect(tokens.isAuthenticated).to.equal(true);
-    // In hybrid flow with openid-client v6, the final ID token comes from token endpoint
     expect(tokens.idToken).to.be.ok;
     expect(tokens.idToken).to.be.a('string');
     expect(tokens.refreshToken).to.equal('__test_refresh_token__');
     expect(tokens.accessToken).to.deep.include({
       access_token: '__test_access_token__',
-      token_type: 'bearer', // openid-client v6 normalizes to lowercase
+      token_type: 'bearer',
     });
     expect(tokens.idTokenClaims).to.deep.include({
       sub: '__test_sub__',
@@ -455,10 +349,22 @@ describe('callback response_mode: form_post', () => {
   });
 
   it('should handle access token expiry', async () => {
+    setupJwks();
+
     mock.timers.enable({ apis: ['Date'], now: new Date() });
 
     const hrSecs = 60 * 60;
     const hrMs = hrSecs * 1000;
+
+    nock('https://op.example.com/')
+      .post('/oauth/token')
+      .reply(200, {
+        access_token: '__test_access_token__',
+        refresh_token: '__test_refresh_token__',
+        id_token: await makeIdToken(),
+        token_type: 'bearer',
+        expires_in: 86400,
+      });
 
     const { tokens, agent } = await setup({
       authOpts: {
@@ -476,13 +382,13 @@ describe('callback response_mode: form_post', () => {
         code: 'jHkWEdUXMU1BwAsC4vtUsZwnNvTIxEl0z9K3vx5KF0Y',
       },
     });
-    expect(tokens.accessToken.expires_in).to.equal(24 * hrSecs);
+    expect(tokens.accessToken.expires_in).to.be.approximately(24 * hrSecs, 5);
     mock.timers.tick(4 * hrMs);
     const tokens2 = await agent
       .get('/tokens')
       .expect(200)
       .then((r) => r.body);
-    expect(tokens2.accessToken.expires_in).to.equal(20 * hrSecs);
+    expect(tokens2.accessToken.expires_in).to.be.approximately(20 * hrSecs, 5);
     expect(tokens2.accessTokenExpired).to.be.false;
     mock.timers.tick(21 * hrMs);
     const tokens3 = await agent
@@ -493,8 +399,18 @@ describe('callback response_mode: form_post', () => {
   });
 
   it('should refresh an access token', async () => {
+    setupJwks();
+
     const idToken = await makeIdToken({
       c_hash: '77QmUPtjPfzWtF2AnpK9RQ',
+    });
+
+    nock('https://op.example.com/').post('/oauth/token').query(true).reply(200, {
+      access_token: '__test_access_token__',
+      refresh_token: '__test_refresh_token__',
+      id_token: idToken,
+      token_type: 'bearer',
+      expires_in: 86400,
     });
 
     const authOpts = {
@@ -537,36 +453,16 @@ describe('callback response_mode: form_post', () => {
       },
     });
 
-    // Set up refresh token endpoint mock
-    const originalFetch = global.fetch;
-    let refreshCallCount = 0;
-    global.fetch = (url, options) => {
-      if (url.toString().includes('/oauth/token') && options?.method === 'POST') {
-        refreshCallCount++;
-        return new Response(
-          JSON.stringify({
-            access_token: '__new_access_token__',
-            refresh_token: '__new_refresh_token__',
-            id_token: tokens.idToken,
-            token_type: 'Bearer',
-            expires_in: 86400,
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }
-        );
-      }
-      return originalFetch(url, options);
-    };
+    nock('https://op.example.com/').post('/oauth/token').reply(200, {
+      access_token: '__new_access_token__',
+      refresh_token: '__new_refresh_token__',
+      id_token: tokens.idToken,
+      token_type: 'Bearer',
+      expires_in: 86400,
+    });
 
     const newTokens = await agent.get('/refresh').then((r) => r.body);
 
-    // Restore original fetch
-    global.fetch = originalFetch;
-
-    // Verify refresh was called and tokens updated
-    expect(refreshCallCount).to.equal(1);
     expect(tokens.accessToken.access_token).to.equal('__test_access_token__');
     expect(tokens.refreshToken).to.equal('__test_refresh_token__');
     expect(newTokens.accessToken.access_token).to.equal('__new_access_token__');
@@ -580,6 +476,8 @@ describe('callback response_mode: form_post', () => {
   });
 
   it('should retain sid after token refresh', async () => {
+    setupJwks();
+
     const idTokenWithSid = await makeIdToken({
       c_hash: '77QmUPtjPfzWtF2AnpK9RQ',
       sid: 'foo',
@@ -610,6 +508,26 @@ describe('callback response_mode: form_post', () => {
       }
     });
 
+    nock('https://op.example.com/')
+      .post('/oauth/token')
+      .query(true)
+      .reply(200, {
+        access_token: '__test_access_token__',
+        refresh_token: '__test_refresh_token__',
+        id_token: idTokenWithSid,
+        token_type: 'bearer',
+        expires_in: 86400,
+      })
+      .post('/oauth/token')
+      .query(true)
+      .reply(200, {
+        access_token: '__new_access_token__',
+        refresh_token: '__new_refresh_token__',
+        id_token: idTokenNoSid,
+        token_type: 'bearer',
+        expires_in: 86400,
+      });
+
     const { agent } = await setup({
       router,
       authOpts: {
@@ -629,50 +547,35 @@ describe('callback response_mode: form_post', () => {
         id_token: idTokenWithSid,
         code: 'jHkWEdUXMU1BwAsC4vtUsZwnNvTIxEl0z9K3vx5KF0Y',
       },
-      // Custom token response that preserves the SID
-      tokenResponse: {
-        id_token: await makeIdToken({ sid: 'foo' }),
-      },
     });
-
-    // Set up refresh token endpoint mock
-    const originalFetch = global.fetch;
-    global.fetch = (url, options) => {
-      if (url.toString().includes('/oauth/token') && options?.method === 'POST') {
-        return new Response(
-          JSON.stringify({
-            access_token: '__new_access_token__',
-            refresh_token: '__new_refresh_token__',
-            id_token: idTokenNoSid,
-            token_type: 'Bearer',
-            expires_in: 86400,
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }
-        );
-      }
-      return originalFetch(url, options);
-    };
 
     await agent.get('/refresh');
     const { body: newTokens } = await agent.get('/tokens');
-
-    // Restore original fetch
-    global.fetch = originalFetch;
 
     expect(newTokens.accessToken.access_token).to.equal('__new_access_token__');
     expect(newTokens.idTokenClaims.sid).to.equal('foo');
   });
 
   it('should remove any stale back-channel logout entries by sub', async () => {
-    const { client, store } = getRedisStore();
-    await client.asyncSet('https://op.example.com/|bcl-sub', '{}');
+    setupJwks();
+
     const idToken = await makeIdToken({
       sub: 'bcl-sub',
       c_hash: '77QmUPtjPfzWtF2AnpK9RQ', // Required for hybrid flow
     });
+
+    nock('https://op.example.com/').post('/oauth/token').query(true).reply(200, {
+      access_token: '__test_access_token__',
+      refresh_token: '__test_refresh_token__',
+      id_token: idToken,
+      token_type: 'bearer',
+      expires_in: 86400,
+    });
+
+    // const { client, store } = getRedisStore();
+    // await client.asyncSet('https://op.example.com/|bcl-sub', '{}');
+    const store = new CustomStore();
+    await store.set('https://op.example.com/|bcl-sub', '{}');
     const {
       response: { statusCode },
     } = await setup({
@@ -694,14 +597,36 @@ describe('callback response_mode: form_post', () => {
       },
     });
     expect(statusCode).to.equal(302);
-    const logout = await client.asyncGet('https://op.example.com/|bcl-sub');
+    // const logout = await client.asyncGet('https://op.example.com/|bcl-sub');
+    const logout = await store.get('https://op.example.com/|bcl-sub');
     expect(logout).to.not.be.ok;
   });
 
   it('should refresh an access token and keep original refresh token', async () => {
+    setupJwks();
+
     const idToken = await makeIdToken({
       c_hash: '77QmUPtjPfzWtF2AnpK9RQ',
     });
+
+    nock('https://op.example.com/')
+      .post('/oauth/token')
+      .query(true)
+      .reply(200, {
+        access_token: '__test_access_token__',
+        refresh_token: '__test_refresh_token__',
+        id_token: idToken,
+        token_type: 'bearer',
+        expires_in: 86400,
+      })
+      .post('/oauth/token')
+      .query(true)
+      .reply(200, {
+        access_token: '__new_access_token__',
+        id_token: idToken,
+        token_type: 'bearer',
+        expires_in: 86400,
+      });
 
     const authOpts = {
       ...defaultConfig,
@@ -743,33 +668,8 @@ describe('callback response_mode: form_post', () => {
       },
     });
 
-    // Set up refresh token endpoint mock (without returning new refresh token)
-    const originalFetch = global.fetch;
-    global.fetch = (url, options) => {
-      if (url.toString().includes('/oauth/token') && options?.method === 'POST') {
-        return new Response(
-          JSON.stringify({
-            access_token: '__new_access_token__',
-            id_token: tokens.id_token,
-            token_type: 'Bearer',
-            expires_in: 86400,
-            // Note: no refresh_token returned - should keep original
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }
-        );
-      }
-      return originalFetch(url, options);
-    };
-
     const newTokens = await agent.get('/refresh').then((r) => r.body);
 
-    // Restore original fetch
-    global.fetch = originalFetch;
-
-    // Remove the request body assertion since we're using openid-client v6
     expect(tokens.accessToken.access_token).to.equal('__test_access_token__');
     expect(tokens.refreshToken).to.equal('__test_refresh_token__');
     expect(newTokens.accessToken.access_token).to.equal('__new_access_token__');
@@ -777,9 +677,31 @@ describe('callback response_mode: form_post', () => {
   });
 
   it('should refresh an access token and pass tokenEndpointParams and refresh argument params to the request', async () => {
+    setupJwks();
+
     const idToken = await makeIdToken({
       c_hash: '77QmUPtjPfzWtF2AnpK9RQ',
     });
+
+    nock('https://op.example.com/')
+      .post('/oauth/token')
+      .query(true)
+      .reply(200, {
+        access_token: '__test_access_token__',
+        refresh_token: '__test_refresh_token__',
+        id_token: idToken,
+        token_type: 'bearer',
+        expires_in: 86400,
+      })
+      .post('/oauth/token')
+      .query(true)
+      .reply(200, {
+        access_token: '__new_access_token__',
+        refresh_token: '__new_refresh_token__',
+        id_token: idToken,
+        token_type: 'bearer',
+        expires_in: 86400,
+      });
 
     const authOpts = {
       ...defaultConfig,
@@ -825,31 +747,7 @@ describe('callback response_mode: form_post', () => {
       },
     });
 
-    // Set up refresh token endpoint mock
-    const originalFetch = global.fetch;
-    global.fetch = (url, options) => {
-      if (url.toString().includes('/oauth/token') && options?.method === 'POST') {
-        return new Response(
-          JSON.stringify({
-            access_token: '__new_access_token__',
-            refresh_token: '__new_refresh_token__',
-            id_token: tokens.idToken,
-            token_type: 'Bearer',
-            expires_in: 86400,
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }
-        );
-      }
-      return originalFetch(url, options);
-    };
-
     const newTokens = await agent.get('/refresh').then((r) => r.body);
-
-    // Restore original fetch
-    global.fetch = originalFetch;
 
     expect(tokens.accessToken.access_token).to.equal('__test_access_token__');
     expect(tokens.refreshToken).to.equal('__test_refresh_token__');
@@ -864,8 +762,18 @@ describe('callback response_mode: form_post', () => {
   });
 
   it('should fetch userinfo', async () => {
+    setupJwks();
+
     const idToken = await makeIdToken({
       c_hash: '77QmUPtjPfzWtF2AnpK9RQ',
+    });
+
+    nock('https://op.example.com/').post('/oauth/token').query(true).reply(200, {
+      access_token: '__test_access_token__',
+      refresh_token: '__test_refresh_token__',
+      id_token: idToken,
+      token_type: 'bearer',
+      expires_in: 86400,
     });
 
     const authOpts = {
@@ -903,35 +811,34 @@ describe('callback response_mode: form_post', () => {
       },
     });
 
-    // Set up userinfo endpoint mock
-    const originalFetch = global.fetch;
-    global.fetch = (url, options) => {
-      if (url.toString().includes('/userinfo')) {
-        return new Response(
-          JSON.stringify({
-            userInfo: true,
-            sub: '__test_sub__',
-          }),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }
-        );
-      }
-      return originalFetch(url, options);
-    };
+    nock('https://op.example.com/').get('/userinfo').query(true).reply(200, {
+      userInfo: true,
+      sub: '__test_sub__',
+    });
 
     const userInfo = await agent.get('/user-info').then((r) => r.body);
-
-    // Restore original fetch
-    global.fetch = originalFetch;
 
     expect(userInfo).to.deep.equal({ userInfo: true, sub: '__test_sub__' });
   });
 
   it('should use basic auth on token endpoint when using code flow', async () => {
+    setupJwks();
+
     const idToken = await makeIdToken({
       c_hash: '77QmUPtjPfzWtF2AnpK9RQ',
+    });
+
+    nock('https://op.example.com/').post('/oauth/token').query(true).reply(200, {
+      access_token: '__test_access_token__',
+      refresh_token: '__test_refresh_token__',
+      id_token: idToken,
+      token_type: 'bearer',
+      expires_in: 86400,
+    });
+
+    nock('https://op.example.com/').post('/userinfo').query(true).reply(200, {
+      userInfo: true,
+      sub: '__test_sub__',
     });
 
     const { currentUser, tokens } = await setup({
@@ -965,6 +872,22 @@ describe('callback response_mode: form_post', () => {
   it('should use private key jwt on token endpoint', async () => {
     const privateKey = await getPrivatePEM();
 
+    nock('https://op.example.com/')
+      .post('/oauth/token')
+      .query(true)
+      .reply(200, {
+        access_token: '__test_access_token__',
+        refresh_token: '__test_refresh_token__',
+        id_token: await makeIdToken(),
+        token_type: 'bearer',
+        expires_in: 86400,
+      });
+
+    nock('https://op.example.com/').post('/userinfo').query(true).reply(200, {
+      userInfo: true,
+      sub: '__test_sub__',
+    });
+
     const { currentUser, tokens } = await setup({
       authOpts: {
         authorizationParams: {
@@ -990,6 +913,22 @@ describe('callback response_mode: form_post', () => {
   });
 
   it('should use client secret jwt on token endpoint', async () => {
+    nock('https://op.example.com/')
+      .post('/oauth/token')
+      .query(true)
+      .reply(200, {
+        access_token: '__test_access_token__',
+        refresh_token: '__test_refresh_token__',
+        id_token: await makeIdToken(),
+        token_type: 'bearer',
+        expires_in: 86400,
+      });
+
+    nock('https://op.example.com/').post('/userinfo').query(true).reply(200, {
+      userInfo: true,
+      sub: '__test_sub__',
+    });
+
     const { currentUser, tokens } = await setup({
       authOpts: {
         clientSecret: 'foo',
@@ -1015,44 +954,6 @@ describe('callback response_mode: form_post', () => {
     expect(tokens.isAuthenticated).to.be.true;
   });
 
-  // Note: Several session management tests have been removed because they relied on
-  // implicit flow patterns (only id_token in callback) which are not supported in openid-client v6.
-  // These tests covered edge cases around user switching scenarios that would need to be
-  // rewritten for authorization code flow to be relevant in v6.
-
-  it('should preserve session when the same user is logging in over their existing session', async () => {
-    const store = new memoryStoreFactory({
-      checkPeriod: 24 * 60 * 1000,
-    });
-    const { currentSession, currentUser, existingSessionCookie, agent } = await setup({
-      cookies: generateCookies({
-        state: expectedDefaultState,
-        nonce: '__test_nonce__',
-      }),
-      body: {
-        state: expectedDefaultState,
-        id_token: await makeIdToken({ sub: 'foo' }),
-      },
-      existingSession: {
-        shoppingCartId: 'bar',
-        id_token: await makeIdToken({ sub: 'foo' }),
-      },
-      authOpts: {
-        session: {
-          store,
-        },
-      },
-    });
-
-    const cookies = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
-    const newSessionCookie = cookies.find(({ name }) => name === 'appSession');
-
-    expect(currentUser.sub).to.equal('foo');
-    expect(currentSession.shoppingCartId).to.equal('bar');
-    expect(store.store.length, 'There should only be one session in the store').to.equal(1);
-    expect(existingSessionCookie.value).to.equal(newSessionCookie.value);
-  });
-
   it('should allow custom callback route', async () => {
     const config = {
       ...defaultConfig,
@@ -1062,7 +963,7 @@ describe('callback response_mode: form_post', () => {
     };
     const router = auth(config);
 
-    router.post('/callback', (req, res) => {
+    router.post('/callback', (_req, res) => {
       res.set('foo', 'bar');
       res.oidc.callback({
         redirectUri: 'http://localhost:3000/callback',

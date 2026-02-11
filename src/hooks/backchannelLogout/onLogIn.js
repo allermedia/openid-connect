@@ -1,14 +1,16 @@
-import { get as getClient } from '../../client.js';
-import safePromisify from '../../utils/promisifyCompat.js';
+import { getClient } from '../../client.js';
 
-// Remove any Back-Channel Logout tokens for this `sub` and `sid`
+/**
+ * Remove any Back-Channel Logout tokens for this `sub` and `sid`
+ * @param {import('express').Request} req
+ * @param {import('types').ConfigParams} config
+ */
 export default async function onLogIn(req, config) {
   const {
     issuer: { issuer },
   } = await getClient(config);
   const { session, backchannelLogout } = config;
-  const store = (backchannelLogout && backchannelLogout.store) || session.store;
-  const destroy = safePromisify(store.destroy, store);
+  const store = backchannelLogout && typeof backchannelLogout === 'object' ? backchannelLogout.store : session.store;
 
   // Get the sub and sid from the ID token claims
   const { sub, sid } = req.oidc.idTokenClaims;
@@ -24,5 +26,5 @@ export default async function onLogIn(req, config) {
     sid && `${normalizedIssuer}/|${sid}`,
   ].filter(Boolean);
 
-  await Promise.all(keys.map((key) => destroy(key)));
+  await Promise.all(keys.map((key) => store.destroy(key)));
 }

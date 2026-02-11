@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 
-import { encryption as deriveKey } from '../../src/crypto.js';
+import { getEncryptionKeyStore } from '../../src/crypto.js';
 
 const epoch = () => (Date.now() / 1000) | 0;
 
-const key = deriveKey('__test_secret__');
+const [key] = getEncryptionKeyStore('__test_secret__');
 const payload = JSON.stringify({ sub: '__test_sub__' });
 const epochNow = epoch();
 const weekInSeconds = 7 * 24 * 60 * 60;
@@ -64,7 +64,4 @@ function decrypt(jweCompact) {
 const encrypted = encrypt(payload, encryptOpts);
 const { payload: decrypted } = decrypt(encrypted);
 
-export default {
-  encrypted,
-  decrypted,
-};
+export { encrypted, decrypted };

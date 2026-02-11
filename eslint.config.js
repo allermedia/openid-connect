@@ -101,7 +101,16 @@ export default [
       globals: {
         ...globals.node,
         ...globals.mocha,
-        expect: false,
+        expect: 'readonly',
+        afterEachScenario: 'readonly',
+        beforeEachScenario: 'readonly',
+        Feature: 'readonly',
+        Scenario: 'readonly',
+        Given: 'readonly',
+        When: 'readonly',
+        Then: 'readonly',
+        And: 'readonly',
+        But: 'readonly',
       },
     },
     rules: {
@@ -109,6 +118,6 @@ export default [
     },
   },
   {
-    ignores: ['CHANGELOG.md', 'coverage/**', 'docs/**', '.cache/**', 'node_modules/**'],
+    ignores: ['CHANGELOG.md', 'coverage/**', 'docs/**', 'node_modules/**', 'lib/**', 'tmp/**'],
   },
 ];

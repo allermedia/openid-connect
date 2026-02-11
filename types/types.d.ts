@@ -1,0 +1,992 @@
+import { Request, Response, RequestHandler } from 'express';
+import type { JWK, CryptoKey } from 'jose';
+import type { KeyObject } from 'node:crypto';
+import { RequestContext, ResponseContext } from '../src/context.js';
+
+/**
+ * Extend express interfaces (Response/Request) to support oidc param
+ */
+declare global {
+  namespace Express {
+    interface Request {
+      oidc: RequestContext;
+      [x: symbol]: any;
+    }
+
+    interface Response {
+      oidc: ResponseContext;
+      [x: symbol]: any;
+    }
+  }
+}
+
+/**
+ * Authorization parameters for the OIDC authorization request.
+ * These parameters are passed to the authorization endpoint.
+ */
+interface AuthorizationParameters {
+  /**
+   * The response type. Defaults to 'code' for authorization code flow.
+   */
+  response_type?: 'code' | 'code id_token';
+  /**
+   * The scope of the access request.
+   */
+  scope?: string;
+  /**
+   * The response mode for returning authorization response parameters.
+   */
+  response_mode?: 'query' | 'form_post' | 'fragment';
+  /**
+   * The redirect URI for the authorization response.
+   */
+  redirect_uri?: string;
+  /**
+   * The nonce value for replay protection.
+   */
+  nonce?: string;
+  /**
+   * The state value for CSRF protection.
+   */
+  state?: string;
+  /**
+   * The code challenge for PKCE.
+   */
+  code_challenge?: string;
+  /**
+   * The code challenge method for PKCE.
+   */
+  code_challenge_method?: 'S256' | 'plain';
+  /**
+   * Audience for the authorization request.
+   */
+  audience?: string;
+  /**
+   * Additional custom parameters.
+   */
+  [key: string]: unknown;
+}
+
+/**
+ * Claims from an ID Token.
+ */
+interface IdTokenClaims {
+  /**
+   * Issuer Identifier.
+   */
+  iss?: string;
+  /**
+   * Subject Identifier.
+   */
+  sub?: string;
+  /**
+   * Audience(s).
+   */
+  aud?: string | string[];
+  /**
+   * Expiration time.
+   */
+  exp?: number;
+  /**
+   * Issued at time.
+   */
+  iat?: number;
+  /**
+   * Time when authentication occurred.
+   */
+  auth_time?: number;
+  /**
+   * Nonce value.
+   */
+  nonce?: string;
+  /**
+   * Access Token hash value.
+   */
+  at_hash?: string;
+  /**
+   * Code hash value.
+   */
+  c_hash?: string;
+  /**
+   * Session ID.
+   */
+  sid?: string;
+  /**
+   * Additional claims.
+   */
+  [key: string]: unknown;
+}
+
+/**
+ * Response from the UserInfo endpoint.
+ */
+interface UserinfoResponse {
+  /**
+   * Subject Identifier.
+   */
+  sub?: string;
+  /**
+   * Full name.
+   */
+  name?: string;
+  /**
+   * Given name.
+   */
+  given_name?: string;
+  /**
+   * Family name.
+   */
+  family_name?: string;
+  /**
+   * Middle name.
+   */
+  middle_name?: string;
+  /**
+   * Nickname.
+   */
+  nickname?: string;
+  /**
+   * Preferred username.
+   */
+  preferred_username?: string;
+  /**
+   * Profile URL.
+   */
+  profile?: string;
+  /**
+   * Picture URL.
+   */
+  picture?: string;
+  /**
+   * Website URL.
+   */
+  website?: string;
+  /**
+   * Email address.
+   */
+  email?: string;
+  /**
+   * Email verified.
+   */
+  email_verified?: boolean;
+  /**
+   * Gender.
+   */
+  gender?: string;
+  /**
+   * Birthdate.
+   */
+  birthdate?: string;
+  /**
+   * Timezone.
+   */
+  zoneinfo?: string;
+  /**
+   * Locale.
+   */
+  locale?: string;
+  /**
+   * Phone number.
+   */
+  phone_number?: string;
+  /**
+   * Phone number verified.
+   */
+  phone_number_verified?: boolean;
+  /**
+   * Address.
+   */
+  address?: {
+    formatted?: string;
+    street_address?: string;
+    locality?: string;
+    region?: string;
+    postal_code?: string;
+    country?: string;
+  };
+  /**
+   * Updated at time.
+   */
+  updated_at?: number;
+  /**
+   * Additional claims.
+   */
+  [key: string]: unknown;
+}
+
+/**
+ * Session object
+ */
+interface Session {
+  /**
+   * Values stored in an authentication session
+   */
+  id_token: string;
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_at: number;
+  [key: string]: any;
+  [key: symbol]: any;
+}
+
+/**
+ * Custom options to pass to login.
+ */
+interface LoginOptions {
+  /**
+   * Override the default {@link ConfigParams.authorizationParams authorizationParams}, if also passing a custom callback
+   * route then  {@link AuthorizationParameters.redirect_uri redirect_uri} must be provided here or in
+   * {@link ConfigParams.authorizationParams config}
+   */
+  authorizationParams?: AuthorizationParameters;
+
+  /**
+   *  URL to return to after login, overrides the Default is {@link express!Request.originalUrl Request.originalUrl}
+   */
+  returnTo?: string;
+
+  /**
+   *  Used by {@link ConfigParams.attemptSilentLogin} to swallow callback errors on silent login.
+   */
+  silent?: boolean;
+}
+
+/**
+ * Custom options to pass to logout.
+ */
+interface LogoutOptions {
+  /**
+   *  URL to returnTo after logout, overrides the Default in {@link ConfigParams.routes routes.postLogoutRedirect}
+   */
+  returnTo?: string;
+
+  /**
+   * Additional custom parameters to pass to the logout endpoint.
+   */
+  logoutParams?: { [key: string]: any };
+}
+
+interface CallbackOptions {
+  /**
+   * This is useful to specify in addition to {@link ConfigParams.baseURL} when your app runs on multiple domains,
+   * it should match {@link LoginOptions.authorizationParams.redirect_uri}
+   */
+  redirectUri: string;
+
+  /**
+   * Additional request body properties to be sent to the `token_endpoint.
+   */
+  tokenEndpointParams?: TokenParameters;
+}
+
+/**
+ * Custom options to configure Back-Channel Logout on your application.
+ */
+interface BackchannelLogoutOptions {
+  /**
+   * Used to store Back-Channel Logout entries, you can specify a separate store
+   * for this or just reuse {@link SessionConfigParams.store} if you are using one already.
+   *
+   * The store should have `get`, `set` and `destroy` methods, making it compatible
+   * with [express-session stores](https://github.com/expressjs/session#session-store-implementation).
+   */
+  store?: SessionStore<Pick<SessionStorePayload, 'cookie'>>;
+
+  /**
+   * On receipt of a Logout Token the SDK validates the token then by default stores 2 entries: one
+   * by the token's `sid` claim (if available) and one by the token's `sub` claim (if available).
+   *
+   * If a session subsequently shows up with either the same `sid` or `sub`, the user if forbidden access and
+   * their cookie is deleted.
+   *
+   * You can override this to implement your own Back-Channel Logout logic
+   */
+  onLogoutToken?: (decodedToken: object, config: ConfigParams) => Promise<void> | void;
+
+  /**
+   * When {@link backchannelLogout} is enabled all requests that have a session
+   * will be checked for a previous Back-Channel logout. By default, this
+   * uses the `sub` and the `sid` (if available) from the session's ID token to look up a previous logout and
+   * logs the user out if one is found.
+   *
+   * You can override this to implement your own Back-Channel Logout logic
+   */
+  isLoggedOut?: false | ((req: Request, config: ConfigParams) => Promise<boolean> | boolean);
+
+  /**
+   * When {@link backchannelLogout} is enabled, upon successful login the SDK will remove any existing Back-Channel
+   * logout entries for the same `sub`, to prevent the user from being logged out by an old Back-Channel logout.
+   *
+   * You can override this to implement your own Back-Channel Logout logic
+   */
+  onLogin?: false | ((req: Request, config: ConfigParams) => Promise<void> | void);
+
+  /**
+   * For testing only - allows insecure JWT decoding without verification
+   */
+  isInsecure?: boolean;
+}
+
+/**
+ * Configuration parameters passed to the `auth()` middleware.
+ *
+ * {@link ConfigParams.issuerBaseURL issuerBaseURL}, {@link ConfigParams.baseURL baseURL}, {@link ConfigParams.clientID clientID}
+ * and {@link ConfigParams.secret secret} are required but can be configured with environmental variables. {@link ConfigParams.clientSecret clientSecret} is not required but can also be configured this way.
+ */
+interface ConfigParams {
+  /**
+   * REQUIRED. The secret(s) used to derive an encryption key for the user identity in a stateless session cookie,
+   * to sign the transient cookies used by the login callback and to sign the custom session store cookies if
+   * {@Link signSessionStoreCookie} is `true`. Use a single string key or array of keys. Secrets must be at least 8 characters long.
+   * If an array of secrets is provided, only the first element will be used to sign or encrypt the values, while all
+   * the elements will be considered when decrypting or verifying the values.
+   */
+  secret?: string | Array<string>;
+
+  /**
+   * Object defining application session cookie attributes.
+   */
+  session?: SessionConfigParams;
+
+  /**
+   *  URL parameters used when redirecting users to the authorization server to log in.
+   *
+   *  If this property is not provided by your application, its default values will be:
+   *
+   * ```js
+   * {
+   *   response_type: 'id_token',
+   *   response_mode: 'form_post',
+   *   scope: 'openid profile email'
+   * }
+   * ```
+   *
+   * New values can be passed in to change what is returned from the authorization server depending on your specific scenario.
+   *
+   * For example, to receive an access token for an API, you could initialize like the sample below. Note that `response_mode` can be omitted because the OAuth2 default mode of `query` is fine:
+   *
+   * ```js
+   * app.use(
+   *   auth({
+   *     authorizationParams: {
+   *       response_type: 'code',
+   *       scope: 'openid profile email read:reports',
+   *       audience: 'https://your-api-identifier',
+   *     },
+   *   })
+   * );
+   * ```
+   *
+   * Additional custom parameters can be added as well:
+   *
+   * ```js
+   * app.use(auth({
+   *   authorizationParams: {
+   *     // Note: you need to provide required parameters if this object is set.
+   *     response_type: "id_token",
+   *     response_mode: "form_post",
+   *     scope: "openid profile email"
+   *    // Additional parameters
+   *    acr_value: "tenant:test-tenant",
+   *    custom_param: "custom-value"
+   *   }
+   * }));
+   * ```
+   */
+  authorizationParams?: AuthorizationParameters;
+
+  /**
+   * Additional custom parameters to pass to the logout endpoint.
+   */
+  logoutParams?: { [key: string]: any };
+
+  /**
+   * REQUIRED. The root URL for the application router, eg https://localhost
+   *
+   * Note: In the event that the URL has a path at the end, the `auth` middleware
+   * will need to be bound relative to that path. I.e
+   *
+   * ```js
+   * app.use('/some/path', auth({
+   *  baseURL: "https://example.com/some/path"
+   *  [...]
+   * })
+   * ```
+   */
+  baseURL?: string;
+
+  /**
+   * REQUIRED. The Client ID for your application.
+   */
+  clientID?: string;
+
+  /**
+   * The Client Secret for your application.
+   * Required when requesting access tokens.
+   */
+  clientSecret?: string;
+
+  /**
+   * Integer value for the system clock's tolerance (leeway) in seconds for ID token verification.`
+   * Default is 60
+   */
+  clockTolerance?: number;
+
+  /**
+   * Throw a 401 error instead of triggering the login process for routes that require authentication.
+   * Default is `false`
+   */
+  errorOnRequiredAuth?: boolean;
+
+  /**
+   * Attempt silent login (`prompt: 'none'`) on the first unauthenticated route the user visits.
+   * For protected routes this can be useful if your Identity Provider does not default to
+   * `prompt: 'none'` and you'd like to attempt this before requiring the user to interact with a login prompt.
+   * For unprotected routes this can be useful if you want to check the user's logged in state on their IDP, to
+   * show them a login/logout button for example.
+   * Default is `false`
+   */
+  attemptSilentLogin?: boolean;
+
+  /**
+   * Function that returns an object with URL-safe state values for `res.oidc.login()`.
+   * Used for passing custom state parameters to your authorization server.
+   *
+   * ```js
+   * app.use(auth({
+   *   ...
+   *   getLoginState(req, options) {
+   *     return {
+   *       returnTo: options.returnTo || req.originalUrl,
+   *       customState: 'foo'
+   *     };
+   *   }
+   * }))
+   * ``
+   */
+  getLoginState?: (req: Request, options: LoginOptions) => Promise<Record<string, any>>;
+
+  /**
+   * Function for custom callback handling after receiving and validating the ID Token and before redirecting.
+   * This can be used for handling token storage, making userinfo calls, claim validation, etc.
+   *
+   * ```js
+   * app.use(auth({
+   *   ...
+   *   afterCallback: async (req, res, session, decodedState) => {
+   *     const userProfile = await request(`${issuerBaseURL}/userinfo`);
+   *     return {
+   *       ...session,
+   *       userProfile // access using `req.appSession.userProfile`
+   *     };
+   *   }
+   * }))
+   * ``
+   */
+  afterCallback?: (req: Request, res: Response, session: Session, decodedState?: { [key: string]: any }) => Promise<Session> | Session;
+
+  /**
+   * Array value of claims to remove from the ID token before storing the cookie session.
+   * Default is `['aud', 'iss', 'iat', 'exp', 'nbf', 'nonce', 'azp', 'auth_time', 's_hash', 'at_hash', 'c_hash' ]`
+   */
+  identityClaimFilter?: string[];
+
+  /**
+   * Boolean value to log the user out from the identity provider on application logout. Default is `false`
+   */
+  idpLogout?: boolean;
+
+  /**
+   * String value for the expected ID token algorithm. Default is 'RS256'
+   */
+  idTokenSigningAlg?: string;
+
+  /**
+   * REQUIRED. The root URL for the token issuer with no trailing slash.
+   */
+  issuerBaseURL?: string;
+
+  /**
+   * Set a fallback cookie with no SameSite attribute when response_mode is form_post.
+   * Default is true
+   */
+  legacySameSiteCookie?: boolean;
+
+  /**
+   * Require authentication for all routes.
+   */
+  authRequired?: boolean;
+
+  /**
+   * Perform a Pushed Authorization Request at the issuer's pushed_authorization_request_endpoint at login.
+   */
+  pushedAuthorizationRequests?: boolean;
+
+  /**
+   * Set to `true` to enable Back-Channel Logout in your application.
+   * This will set up a web hook on your app at {@link ConfigParams.routes routes.backchannelLogout}
+   * On receipt of a Logout Token the webhook will store the token, then on any
+   * subsequent requests, will check the store for a Logout Token that corresponds to the
+   * current session. If it finds one, it will log the user out.
+   *
+   * In order for this to work you need to specify a {@link ConfigParams.backchannelLogout.store},
+   * which can be any `express-session` compatible store, or you can
+   * reuse {@link SessionConfigParams.store} if you are using one already.
+   *
+   * See: https://openid.net/specs/openid-connect-backchannel-1_0.html
+   */
+  backchannelLogout?: boolean | BackchannelLogoutOptions;
+
+  /**
+   * Configuration for the login, logout, callback and postLogoutRedirect routes.
+   */
+  routes?: {
+    /**
+     * Relative path to application login.
+     */
+    login?: string | false;
+
+    /**
+     * Relative path to application logout.
+     */
+    logout?: string | false;
+
+    /**
+     * Either a relative path to the application or a valid URI to an external domain.
+     * This value must be registered on the authorization server.
+     * The user will be redirected to this after a logout has been performed.
+     */
+    postLogoutRedirect?: string;
+
+    /**
+     * Relative path to the application callback to process the response from the authorization server.
+     */
+    callback?: string | false;
+
+    /**
+     * Relative path to the application's Back-Channel Logout web hook.
+     */
+    backchannelLogout?: string;
+  };
+
+  /**
+   * Configuration parameters used for the transaction cookie.
+   */
+  transactionCookie?: Pick<CookieConfigParams, 'sameSite'> & { name?: string };
+
+  /**
+   * String value for the client's authentication method. Default is `none` when using response_type='id_token', `private_key_jwt` when using a `clientAssertionSigningKey`, otherwise `client_secret_basic`.
+   */
+  clientAuthMethod?: string;
+
+  /**
+   * Private key for use with 'private_key_jwt' clients.
+   *
+   * Can be a PEM:
+   *
+   * ```js
+   * app.use(auth({
+   *   ...
+   *   clientAssertionSigningKey: '-----BEGIN PRIVATE KEY-----\nMIIEo...PgCaw\n-----END PRIVATE KEY-----',
+   * }))
+   * ```
+   *
+   * Or JWK:
+   *
+   * ```js
+   * app.use(auth({
+   *   ...
+   *   clientAssertionSigningKey: {
+   *     kty: 'RSA',
+   *     n: 'u2fhZ...XIqhQ',
+   *     e: 'AQAB',
+   *     d: 'Cmvt9...g__Jw',
+   *     p: 'y5iuh...dIMwM',
+   *     q: '66Rex...IZcdc',
+   *     dp: 'GVGVc...La4a0',
+   *     dq: 'SyER8...Dnaes',
+   *     qi: 'JTtu5...P2HMw'
+   *   },
+   * }))
+   * ```
+   *
+   * Or KeyObject:
+   *
+   * ```js
+   * app.use(auth({
+   *   ...
+   *   clientAssertionSigningKey: crypto.createPrivateKey({ key: '-----BEGIN PRIVATE KEY-----\nMIIEo...PgCaw\n-----END PRIVATE KEY-----' }),
+   * }))
+   * ```
+   */
+  clientAssertionSigningKey?: CryptoKey | KeyObject | JWK | string;
+
+  /**
+   * The algorithm to sign the client assertion JWT.
+   * Uses one of `token_endpoint_auth_signing_alg_values_supported` if not specified.
+   * If the Authorization Server discovery document does not list `token_endpoint_auth_signing_alg_values_supported`
+   * this property will be required.
+   */
+  clientAssertionSigningAlg?: ClientAssertionSigningAlg;
+
+  /**
+   * Additional request body properties to be sent to the `token_endpoint` during authorization code exchange or token refresh.
+   */
+  tokenEndpointParams?: TokenParameters;
+
+  /**
+   * Maximum time (in milliseconds) to wait before fetching the Identity Provider's Discovery document again. Default is 600000 (10 minutes).
+   */
+  discoveryCacheMaxAge?: number;
+
+  /**
+   * Http timeout for oidc client requests in milliseconds.  Default is 5000.   Minimum is 500.
+   */
+  httpTimeout?: number;
+
+  /**
+   * Optional User-Agent header value for oidc client requests.`.
+   */
+  httpUserAgent?: string;
+
+  /**
+   * Allow insecure requests
+   */
+  allowInsecureRequests?: boolean;
+
+  /**
+   * Custom fetch method to pe passed to OpenID client
+   */
+  customFetch?: (...args: Parameters<typeof globalThis.fetch>) => ReturnType<typeof globalThis.fetch>;
+}
+
+interface SessionHeaders {
+  /**
+   * timestamp (in secs) when the session was created.
+   */
+  iat: number;
+  /**
+   * timestamp (in secs) when the session was last touched.
+   */
+  uat: number;
+  /**
+   * timestamp (in secs) when the session expires.
+   */
+  exp: number;
+}
+
+interface SessionStorePayload<Data = Session> {
+  header: SessionHeaders;
+
+  /**
+   * The session data.
+   */
+  data: Data;
+
+  /**
+   * This makes it compatible with some `express-session` stores that use this
+   * to set their ttl.
+   */
+  cookie: {
+    expires: number;
+    maxAge: number;
+  };
+}
+
+interface SessionStore<Data = Session> {
+  /**
+   * Gets the session from the store given a session ID and passes it to `callback`.
+   */
+  get(sid: string, callback: (err: any, session?: SessionStorePayload<Data> | null) => void): void;
+  get(sid: string): Promise<SessionStorePayload<Data> | null>;
+
+  /**
+   * Upsert a session in the store given a session ID and `SessionData`
+   */
+  set(sid: string, session: SessionStorePayload<Data>, callback?: (err?: any) => void): void;
+  set(sid: string, session: SessionStorePayload<Data>): Promise<void>;
+
+  /**
+   * Destroys the session with the given session ID.
+   */
+  destroy(sid: string, callback?: (err?: any) => void): void;
+  destroy(sid: string): Promise<void>;
+
+  [key: string]: any;
+}
+
+/**
+ * Configuration parameters used for the application session.
+ */
+interface SessionConfigParams {
+  /**
+   * String value for the cookie name used for the internal session.
+   * This value must only include letters, numbers, and underscores.
+   * Default is `appSession`.
+   */
+  name?: string;
+
+  /**
+   * By default the session is stored in an encrypted cookie. But when the session
+   * gets too large it can bump up against the limits of cookie storage.
+   * In these instances you can use a custom session store. The store should
+   * have `get`, `set` and `destroy` methods, making it compatible
+   * with [express-session stores](https://github.com/expressjs/session#session-store-implementation).
+   */
+  store?: SessionStore;
+
+  /**
+   * A Function for generating a session id when using a custom session store.
+   * For full details see the documentation for express-session
+   * at [genid](https://github.com/expressjs/session/blob/master/README.md#genid).
+   *
+   * Be aware the default implementation is slightly different in this library as
+   * compared to the default session id generation used in express-session.
+   *
+   * **IMPORTANT** If you override this method you should be careful to generate
+   * unique IDs so your sessions do not conflict. Also, to reduce the ability
+   * to hijack a session by guessing the session ID, you must use a suitable
+   * cryptographically strong random value of sufficient size or sign the cookie
+   * by setting {@Link signSessionStoreCookie} to `true`.
+   */
+  genid?: (req: Request) => Promise<string> | string;
+
+  /**
+   * Sign the session store cookies to reduce the chance of collisions
+   * and reduce the ability to hijack a session by guessing the session ID.
+   *
+   * This is required if you override {@Link genid} and don't use a suitable
+   * cryptographically strong random value of sufficient size.
+   */
+  signSessionStoreCookie?: boolean;
+
+  /**
+   * If you enable {@Link signSessionStoreCookie} your existing sessions will
+   * be invalidated. You can use this flag to temporarily allow unsigned cookies
+   * while you sign your user's session cookies. For example:
+   *
+   * Set {@Link signSessionStoreCookie} to `true` and {@Link requireSignedSessionStoreCookie} to `false`.
+   * Wait for your {@Link rollingDuration} (default 1 day) or {@Link absoluteDuration} (default 1 week)
+   * to pass (which ever comes first). By this time all your sessions cookies will either be signed or
+   * have expired, then you can remove the {@Link requireSignedSessionStoreCookie} config option which
+   * will set it to `true`.
+   *
+   * Signed session store cookies will be mandatory in the next major release.
+   */
+  requireSignedSessionStoreCookie?: boolean;
+
+  /**
+   * If you want your session duration to be rolling, eg reset everytime the
+   * user is active on your site, set this to a `true`. If you want the session
+   * duration to be absolute, where the user is logged out a fixed time after login,
+   * regardless of activity, set this to `false`
+   * Default is `true`.
+   */
+  rolling?: boolean;
+
+  /**
+   * Integer value, in seconds, for application session rolling duration.
+   * The amount of time for which the user must be idle for then to be logged out.
+   * Default is 86400 seconds (1 day).
+   */
+  rollingDuration?: number;
+
+  /**
+   * Integer value, in seconds, for application absolute rolling duration.
+   * The amount of time after the user has logged in that they will be logged out.
+   * Set this to `false` if you don't want an absolute duration on your session.
+   * Default is 604800 seconds (7 days).
+   */
+  absoluteDuration?: boolean | number;
+
+  /**
+   * Configuration parameters used for the session cookie and transient cookies.
+   */
+  cookie?: CookieConfigParams;
+}
+
+interface CookieConfigParams {
+  /**
+   * Domain name for the cookie.
+   * Passed to the [Response cookie](https://expressjs.com/en/api.html#res.cookie) as `domain`
+   */
+  domain?: string;
+
+  /**
+   * Path for the cookie.
+   * Passed to the [Response cookie](https://expressjs.com/en/api.html#res.cookie) as `path`
+   */
+  path?: string;
+
+  /**
+   * Set to true to use a transient cookie (cookie without an explicit expiration).
+   * Default is `false`
+   */
+  transient?: boolean;
+
+  /**
+   * Flags the cookie to be accessible only by the web server.
+   * Passed to the [Response cookie](https://expressjs.com/en/api.html#res.cookie) as `httponly`.
+   * Defaults to `true`.
+   */
+  httpOnly?: boolean;
+
+  /**
+   * Marks the cookie to be used over secure channels only.
+   * Passed to the [Response cookie](https://expressjs.com/en/api.html#res.cookie) as `secure`.
+   * Defaults to the protocol of {@link ConfigParams.baseURL}.
+   */
+  secure?: boolean;
+
+  /**
+   * Value of the SameSite Set-Cookie attribute.
+   * Passed to the [Response cookie](https://expressjs.com/en/api.html#res.cookie) as `samesite`.
+   * Defaults to "Lax" but will be adjusted based on {@link AuthorizationParameters.response_type}.
+   * When setting to 'None' (uncommon), you should implement CSRF protection on your own routes
+   */
+  sameSite?: boolean | 'lax' | 'strict' | 'none';
+}
+
+interface RefreshParams {
+  tokenEndpointParams?: TokenParameters;
+}
+
+interface TokenParameters {
+  [key: string]: unknown;
+}
+
+/**
+ * Express JS middleware implementing sign on for Express web apps using OpenID Connect.
+ *
+ * The `auth()` middleware requires {@link ConfigParams.secret secret}, {@link ConfigParams.baseURL baseURL}, {@link ConfigParams.clientID clientID}
+ * and {@link ConfigParams.issuerBaseURL issuerBaseURL}.
+ *
+ * If you are using a response type that includes `code`, you will also need: {@link ConfigParams.clientSecret clientSecret}
+ * ```
+ * const express = require('express');
+ * const { auth } = require('express-openid-connect');
+ *
+ * const app = express();
+ *
+ * app.use(
+ *   auth({
+ *      issuerBaseURL: 'https://YOUR_DOMAIN',
+ *      baseURL: 'https://YOUR_APPLICATION_ROOT_URL',
+ *      clientID: 'YOUR_CLIENT_ID',
+ *      secret: 'LONG_RANDOM_STRING',
+ *   })
+ * );
+ *
+ * app.get('/', (req, res) => {
+ *   res.send(`hello ${req.oidc.user.name}`);
+ * });
+ *
+ *  app.listen(3000, () => console.log('listening at http://localhost:3000'))
+ * ```
+ */
+export function auth(params?: ConfigParams): RequestHandler;
+
+/**
+ * Set {@link ConfigParams.authRequired authRequired} to `false` then require authentication
+ * on specific routes.
+ *
+ * ```js
+ * const { auth, requiresAuth } = require('express-openid-connect');
+ *
+ * app.use(
+ *   auth({
+ *      ...
+ *      authRequired: false
+ *   })
+ * );
+ *
+ * app.get('/profile', requiresAuth(), (req, res) => {
+ *   res.send(`hello ${req.oidc.user.name}`);
+ * });
+ *
+ * ```
+ */
+export function requiresAuth(requiresLoginCheck?: (req: Request) => boolean): RequestHandler;
+
+/**
+ * Use this MW to protect a route based on the value of a specific claim.
+ *
+ * ```js
+ * const { claimEquals } = require('express-openid-connect');
+ *
+ * app.get('/admin', claimEquals('isAdmin', true), (req, res) => {
+ *   res.send(...);
+ * });
+ *
+ * ```
+ *
+ * @param claim The name of the claim
+ * @param value The value of the claim, should be a primitive
+ */
+export function claimEquals(claim: string, value: boolean | number | string | null): RequestHandler;
+
+/**
+ * Use this MW to protect a route, checking that _all_ values are in a claim.
+ *
+ * ```js
+ * const { claimIncludes } = require('express-openid-connect');
+ *
+ * app.get('/admin/delete', claimIncludes('roles', 'admin', 'superadmin'), (req, res) => {
+ *   res.send(...);
+ * });
+ *
+ * ```
+ *
+ * @param claim The name of the claim
+ * @param args Claim values that must all be included
+ */
+export function claimIncludes(claim: string, ...args: (boolean | number | string | null)[]): RequestHandler;
+
+/**
+ * Use this MW to protect a route, providing a custom function to check.
+ *
+ * ```js
+ * const { claimCheck } = require('express-openid-connect');
+ *
+ * app.get('/admin/community', claimCheck((req, claims) => {
+ *   return claims.isAdmin && claims.roles.includes('community');
+ * }), (req, res) => {
+ *   res.send(...);
+ * });
+ *
+ * ```
+ */
+export function claimCheck(checkFn: (req: Request, claims: IdTokenClaims) => boolean): RequestHandler;
+
+/**
+ * Use this MW to attempt silent login (`prompt=none`) but not require authentication.
+ *
+ * See {@link ConfigParams.attemptSilentLogin attemptSilentLogin}
+ *
+ * ```js
+ * const { attemptSilentLogin } = require('express-openid-connect');
+ *
+ * app.get('/', attemptSilentLogin(), (req, res) => {
+ *   res.render('homepage', {
+ *     isAuthenticated: req.isAuthenticated() // show a login or logout button
+ *   });
+ * });
+ *
+ * ```
+ */
+export function attemptSilentLogin(): RequestHandler;
+
+export enum ClientAssertionSigningAlg {
+  RS256 = 'RS256',
+  RS384 = 'RS384',
+  RS512 = 'RS512',
+  PS256 = 'PS256',
+  PS384 = 'PS384',
+  PS512 = 'PS512',
+  ES256 = 'ES256',
+  ES256K = 'ES256K',
+  ES384 = 'ES384',
+  ES512 = 'ES512',
+  EdDSA = 'EdDSA',
+}

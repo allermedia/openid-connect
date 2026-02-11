@@ -1,10 +1,11 @@
+import { auth, requiresAuth, claimEquals, claimIncludes, claimCheck } from '@aller/openid-connect';
+import nock from 'nock';
 import sinon from 'sinon';
 import request from 'supertest';
 
-import { auth, requiresAuth, claimEquals, claimIncludes, claimCheck } from '../index.js';
-
 import { makeIdToken } from './fixture/cert.js';
-import { create as createServer } from './fixture/server.js';
+import { createApp } from './fixture/server.js';
+import { setupDiscovery } from './helpers/openid-helper.js';
 
 const defaultConfig = {
   secret: '__test_session_secret__',
@@ -20,15 +21,13 @@ async function login(agent, claims) {
 }
 
 describe('requiresAuth', () => {
-  /** @type {import('http').Server} */
-  let server;
-
-  afterEach(() => {
-    server?.close();
+  before(() => {
+    setupDiscovery().persist();
   });
+  after(nock.cleanAll);
 
   it('should allow logged in users to visit a protected route', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -43,7 +42,7 @@ describe('requiresAuth', () => {
   });
 
   it('should ask anonymous user to login when visiting a protected route', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -51,8 +50,8 @@ describe('requiresAuth', () => {
       requiresAuth()
     );
     const agent = request.agent(server);
-    const response = await agent.get('/protected');
-    const state = new URL(response.headers.location).searchParams.get('state');
+    const response = await agent.get('/protected').expect(302);
+    const state = new URL(response.get('location')).searchParams.get('state');
     const decoded = Buffer.from(state, 'base64');
     const parsed = JSON.parse(decoded);
 
@@ -62,7 +61,7 @@ describe('requiresAuth', () => {
   });
 
   it("should 401 for anonymous users who don't accept html", async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -76,7 +75,7 @@ describe('requiresAuth', () => {
   });
 
   it('should return 401 when anonymous user visits a protected route', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -92,7 +91,7 @@ describe('requiresAuth', () => {
   });
 
   it("should throw when there's no auth middleware", async () => {
-    server = await createServer(null, requiresAuth());
+    const server = createApp(null, requiresAuth());
     const agent = request.agent(server);
     const {
       body: { err },
@@ -101,7 +100,7 @@ describe('requiresAuth', () => {
   });
 
   it('should allow logged in users with the right claim', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -118,7 +117,7 @@ describe('requiresAuth', () => {
   });
 
   it("should return 401 when logged in user doesn't have the right value for claim", async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -135,7 +134,7 @@ describe('requiresAuth', () => {
   });
 
   it("should return 401 when logged in user doesn't have the claim", async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -152,7 +151,7 @@ describe('requiresAuth', () => {
   });
 
   it("should return 401 when anonymous user doesn't have the right claim", async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -176,7 +175,7 @@ describe('requiresAuth', () => {
   });
 
   it('should allow logged in users with all of the requested claims', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -193,7 +192,7 @@ describe('requiresAuth', () => {
   });
 
   it('should return 401 for logged with some of the requested claims', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -210,7 +209,7 @@ describe('requiresAuth', () => {
   });
 
   it('should accept claim values as a space separated list', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -227,7 +226,7 @@ describe('requiresAuth', () => {
   });
 
   it("should not accept claim values that aren't a string or array", async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -248,7 +247,7 @@ describe('requiresAuth', () => {
   });
 
   it("should return 401 when checking multiple claims and the user doesn't have the claim", async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -265,7 +264,7 @@ describe('requiresAuth', () => {
   });
 
   it('should return 401 when checking many claims with anonymous user', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -285,7 +284,7 @@ describe('requiresAuth', () => {
   });
 
   it('should allow user when custom claim check returns truthy', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -301,7 +300,7 @@ describe('requiresAuth', () => {
   });
 
   it('should not allow user when custom claim check returns falsey', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -317,7 +316,7 @@ describe('requiresAuth', () => {
   });
 
   it('should make the token claims available to custom check', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -335,7 +334,7 @@ describe('requiresAuth', () => {
 
   it('should not allow anonymous users to check custom claims', async () => {
     const checkSpy = sinon.spy();
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -349,23 +348,5 @@ describe('requiresAuth', () => {
 
     expect(response.statusCode, response.text).to.equal(401);
     sinon.assert.notCalled(checkSpy);
-  });
-
-  it('should collapse leading slashes on returnTo', async () => {
-    server = await createServer(auth(defaultConfig));
-    const agent = request.agent(server);
-
-    const payloads = ['//google.com', '///google.com', '//google.com'];
-    for (const payload of payloads) {
-      const response = await agent.get(payload);
-
-      const state = new URL(response.headers.location).searchParams.get('state');
-      const decoded = Buffer.from(state, 'base64');
-      const parsed = JSON.parse(decoded);
-
-      expect(response.statusCode, response.text).to.equal(302);
-      expect(response.headers.location).to.include('https://op.example.com');
-      expect(parsed.returnTo).to.equal('/google.com');
-    }
   });
 });

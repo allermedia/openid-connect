@@ -1,10 +1,13 @@
-import { get as getClient } from '../../client.js';
-import safePromisify from '../../utils/promisifyCompat.js';
+import { getClient } from '../../client.js';
 
-// Default hook that checks if the user has been logged out via Back-Channel Logout
+/**
+ * Default hook that checks if the user has been logged out via Back-Channel Logout
+ * @param {import('express').Request} req
+ * @param {import('types').ConfigParams} config
+ */
 export default async function isLoggedOut(req, config) {
-  const store = (config.backchannelLogout && config.backchannelLogout.store) || config.session.store;
-  const get = safePromisify(store.get, store);
+  // @ts-ignore
+  const store = config.backchannelLogout?.store || config.session.store;
   const {
     issuer: { issuer },
   } = await getClient(config);
@@ -19,10 +22,10 @@ export default async function isLoggedOut(req, config) {
 
   // Try both normalized and non-normalized issuer URLs to handle inconsistencies
   const [logoutSid, logoutSidAlt, logoutSub, logoutSubAlt] = await Promise.all([
-    sid && get(`${normalizedIssuer}|${sid}`),
-    sid && get(`${normalizedIssuer}/|${sid}`),
-    sub && get(`${normalizedIssuer}|${sub}`),
-    sub && get(`${normalizedIssuer}/|${sub}`),
+    sid && store.get(`${normalizedIssuer}|${sid}`),
+    sid && store.get(`${normalizedIssuer}/|${sid}`),
+    sub && store.get(`${normalizedIssuer}|${sub}`),
+    sub && store.get(`${normalizedIssuer}/|${sub}`),
   ]);
 
   return !!(logoutSid || logoutSidAlt || logoutSub || logoutSubAlt);

@@ -1,12 +1,15 @@
-import crypto from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 
 import Joi from 'joi';
 
+import Debug from './debug.js';
 import { defaultState as getLoginState } from './hooks/getLoginState.js';
+
+const debug = Debug('config');
 
 const isHttps = /^https:/i;
 
-const defaultSessionIdGenerator = () => crypto.randomBytes(16).toString('hex');
+const defaultSessionIdGenerator = () => randomBytes(16).toString('hex');
 
 const paramsSchema = Joi.object({
   secret: Joi.alternatives([
@@ -26,7 +29,7 @@ const paramsSchema = Joi.object({
       }),
     })
       .optional()
-      .default((parent) => (parent.rolling ? 24 * 60 * 60 : false)), // 1 day when rolling is enabled, else false
+      .default((parent) => (parent.rolling ? 24 * 60 * 60 : false)),
     absoluteDuration: Joi.when(Joi.ref('rolling'), {
       is: false,
       then: Joi.number().integer().messages({
@@ -35,7 +38,7 @@ const paramsSchema = Joi.object({
       otherwise: Joi.alternatives([Joi.number().integer(), Joi.boolean().valid(false)]),
     })
       .optional()
-      .default(7 * 24 * 60 * 60), // 7 days,
+      .default(7 * 24 * 60 * 60),
     name: Joi.string()
       .pattern(/^[0-9a-zA-Z_.-]+$/, { name: 'cookie name' })
       .optional()
@@ -64,7 +67,7 @@ const paramsSchema = Joi.object({
       domain: Joi.string().optional(),
       transient: Joi.boolean().optional().default(false),
       httpOnly: Joi.boolean().optional().default(true),
-      sameSite: Joi.string().valid('Lax', 'Strict', 'None').optional().default('Lax'),
+      sameSite: Joi.string().valid('lax', 'strict', 'none').lowercase().optional().default('Lax'),
       secure: Joi.when(Joi.ref('/baseURL'), {
         is: Joi.string().pattern(isHttps),
         then: Joi.boolean()
@@ -93,7 +96,6 @@ const paramsSchema = Joi.object({
   })
     .default()
     .unknown(false),
-  auth0Logout: Joi.boolean().optional(),
   tokenEndpointParams: Joi.object().optional(),
   authorizationParams: Joi.object({
     response_type: Joi.string().optional().valid('code id_token', 'code').default('code'),
@@ -119,7 +121,7 @@ const paramsSchema = Joi.object({
       onLogin: Joi.alternatives([Joi.function(), Joi.boolean().valid(false)]).optional(),
       isLoggedOut: Joi.alternatives([Joi.function(), Joi.boolean().valid(false)]).optional(),
       onLogoutToken: Joi.function().optional(),
-      isInsecure: Joi.boolean().optional(), // For testing only - allows insecure JWT decoding without verification
+      isInsecure: Joi.boolean().optional(),
     }),
     Joi.boolean(),
   ]).default(false),
@@ -130,7 +132,7 @@ const paramsSchema = Joi.object({
       is: 'form_post',
       then: Joi.string().pattern(isHttps).rule({
         warn: true,
-        message: `Using 'form_post' for response_mode may cause issues for you logging in over http, see https://github.com/auth0/express-openid-connect/blob/master/FAQ.md`,
+        message: `Using 'form_post' for response_mode may cause issues for you logging in over http`,
       }),
     }),
   clientID: Joi.string().required(),
@@ -158,7 +160,6 @@ const paramsSchema = Joi.object({
       }
     ),
   clockTolerance: Joi.number().optional().default(60),
-  enableTelemetry: Joi.boolean().optional().default(true),
   errorOnRequiredAuth: Joi.boolean().optional().default(false),
   attemptSilentLogin: Joi.boolean().optional().default(false),
   getLoginState: Joi.function()
@@ -168,9 +169,7 @@ const paramsSchema = Joi.object({
   identityClaimFilter: Joi.array()
     .optional()
     .default(['aud', 'iss', 'iat', 'exp', 'nbf', 'nonce', 'azp', 'auth_time', 's_hash', 'at_hash', 'c_hash']),
-  idpLogout: Joi.boolean()
-    .optional()
-    .default((parent) => parent.auth0Logout || false),
+  idpLogout: Joi.boolean().optional().default(false),
   idTokenSigningAlg: Joi.string().insensitive().not('none').optional().default('RS256'),
   issuerBaseURL: Joi.string().uri().required(),
   legacySameSiteCookie: Joi.boolean().optional().default(true),
@@ -189,17 +188,14 @@ const paramsSchema = Joi.object({
     .valid('client_secret_basic', 'client_secret_post', 'client_secret_jwt', 'private_key_jwt', 'none')
     .optional()
     .default((parent) => {
-      // v6: Support public clients with PKCE for authorization code flow
       if (parent.clientAssertionSigningKey) {
         return 'private_key_jwt';
       }
       if (parent.clientSecret) {
         return 'client_secret_post';
       }
-      // No client secret or signing key - use 'none' (public client with PKCE)
       return 'none';
     })
-    // PAR still requires confidential clients
     .when(Joi.ref('pushedAuthorizationRequests'), {
       is: true,
       then: Joi.string().invalid('none').messages({
@@ -213,37 +209,32 @@ const paramsSchema = Joi.object({
       then: Joi.any().required().messages({
         'any.required': '"clientAssertionSigningKey" is required for a "clientAuthMethod" of "private_key_jwt"',
       }),
-    }), // <Object> | <string> | <Buffer> | <KeyObject>,
-  clientAssertionSigningAlg: Joi.string()
-    .valid('RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES256K', 'ES384', 'ES512', 'EdDSA')
-    .optional(),
+    }),
+  clientAssertionSigningAlg: Joi.string().optional(),
   discoveryCacheMaxAge: Joi.number()
     .optional()
     .min(0)
     .default(10 * 60 * 1000),
   httpTimeout: Joi.number().optional().min(500).default(5000),
   httpUserAgent: Joi.string().optional(),
-  httpAgent: Joi.object().optional(),
   allowInsecureRequests: Joi.boolean().optional().default(false),
+  customFetch: Joi.function().optional().description('custom fetch method'),
 });
 
-export function get(config = {}) {
-  config = {
-    secret: process.env.SECRET,
-    issuerBaseURL: process.env.ISSUER_BASE_URL,
-    baseURL: process.env.BASE_URL,
-    clientID: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
-    ...config,
-  };
-
+/**
+ * Get normalized configuration
+ * @param {Partial<import('types').ConfigParams>} config
+ * @returns {import('types').ConfigParams}
+ */
+export function getConfig(config) {
   const { value, error, warning } = paramsSchema.validate(config);
   if (error) {
     throw new TypeError(error.details[0].message);
   }
+
   if (warning) {
-    // eslint-disable-next-line no-console
-    console.warn(warning.message);
+    debug(warning.message);
   }
+
   return value;
 }

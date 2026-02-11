@@ -88,3 +88,5 @@ typings/
 .eslintcache
 .vscode
 package-lock.json
+tmp/
+*.d.ts.map

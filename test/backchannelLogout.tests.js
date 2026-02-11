@@ -1,12 +1,14 @@
+import { auth } from '@aller/openid-connect';
+import nock from 'nock';
 import request from 'supertest';
 
-import { auth } from '../index.js';
-import { get as getConfig } from '../src/config.js';
+import { getConfig } from '../src/config.js';
 import onLogin from '../src/hooks/backchannelLogout/onLogIn.js';
 
 import { makeIdToken, makeLogoutToken } from './fixture/cert.js';
-import { create as createServer } from './fixture/server.js';
-import getRedisStore from './fixture/store.js';
+import { createApp } from './fixture/server.js';
+import { CustomStore } from './helpers/custom-store.js';
+import { setupDiscovery } from './helpers/openid-helper.js';
 
 /**
  * Login and get session with id_token
@@ -20,14 +22,17 @@ async function login(agent, idToken) {
 }
 
 describe('back-channel logout', () => {
-  /** @type {import('http').Server} */
-  let server;
+  before(() => {
+    setupDiscovery().persist();
+  });
+  after(nock.cleanAll);
+
   let client;
   let store;
   let config;
-
   beforeEach(() => {
-    ({ client, store } = getRedisStore());
+    // ({ client, store } = getRedisStore());
+    store = new CustomStore();
     config = {
       clientID: '__test_client_id__',
       baseURL: 'http://example.org',
@@ -36,13 +41,12 @@ describe('back-channel logout', () => {
       authRequired: false,
       backchannelLogout: {
         store,
-        isInsecure: true, // Required for tests since v6 migration doesn't have full JWT verification
+        isInsecure: true,
       },
     };
   });
 
   afterEach(async () => {
-    server?.close();
     if (client) {
       await new Promise((resolve) => client.flushall(resolve));
       await new Promise((resolve) => client.quit(resolve));
@@ -50,7 +54,7 @@ describe('back-channel logout', () => {
   });
 
   it('should only handle post requests', async () => {
-    server = await createServer(auth(config));
+    const server = createApp(auth(config));
 
     for (const method of ['get', 'put', 'patch', 'delete']) {
       const res = await request(server)[method]('/backchannel-logout', {
@@ -61,7 +65,7 @@ describe('back-channel logout', () => {
   });
 
   it('should require a logout token', async () => {
-    server = await createServer(auth(config));
+    const server = createApp(auth(config));
 
     const res = await request(server).post('/backchannel-logout');
     expect(res.statusCode, res.text).to.equal(400);
@@ -72,38 +76,38 @@ describe('back-channel logout', () => {
   });
 
   it('should not cache the response', async () => {
-    server = await createServer(auth(config));
+    const server = createApp(auth(config));
 
     const res = await request(server).post('/backchannel-logout');
     expect(res.get('cache-control')).to.equal('no-store');
   });
 
   it('should accept and store a valid logout_token', async () => {
-    server = await createServer(auth(config));
+    const server = createApp(auth(config));
 
     const res = await request(server)
       .post('/backchannel-logout')
       .set('content-type', 'application/x-www-form-urlencoded')
       .send(
         new URLSearchParams({
-          logout_token: makeLogoutToken({ sid: 'foo' }),
+          logout_token: await makeLogoutToken({ sid: 'foo' }),
         }).toString()
       );
 
     expect(res.statusCode, res.text).to.equal(204);
-    const payload = await client.asyncGet('https://op.example.com/|foo');
+    const payload = await store.get('https://op.example.com/|foo');
     expect(payload).to.be.ok;
   });
 
   it('should accept and store a valid logout_token signed with HS256', async () => {
-    server = await createServer(auth(config));
+    const server = createApp(auth(config));
 
     const res = await request(server)
       .post('/backchannel-logout')
       .set('content-type', 'application/x-www-form-urlencoded')
       .send(
         new URLSearchParams({
-          logout_token: makeLogoutToken({
+          logout_token: await makeLogoutToken({
             sid: 'foo',
             secret: config.clientSecret,
           }),
@@ -111,57 +115,57 @@ describe('back-channel logout', () => {
       );
 
     expect(res.statusCode, res.text).to.equal(204);
-    const payload = await client.asyncGet('https://op.example.com/|foo');
+    const payload = await store.get('https://op.example.com/|foo');
     expect(payload).to.be.ok;
   });
 
   it('should require a sid or a sub', async () => {
-    server = await createServer(auth(config));
+    const server = createApp(auth(config));
 
     const res = await request(server)
       .post('/backchannel-logout')
       .set('content-type', 'application/x-www-form-urlencoded')
-      .send(new URLSearchParams({ logout_token: makeLogoutToken() }).toString());
+      .send(new URLSearchParams({ logout_token: await makeLogoutToken() }).toString());
 
     expect(res.statusCode, res.text).to.equal(400);
   });
 
   it('should set a maxAge based on rolling expiry', async () => {
-    server = await createServer(auth({ ...config, session: { rollingDuration: 999 } }));
+    const server = createApp(auth({ ...config, session: { rollingDuration: 999 } }));
 
     const res = await request(server)
       .post('/backchannel-logout')
       .set('content-type', 'application/x-www-form-urlencoded')
-      .send(new URLSearchParams({ logout_token: makeLogoutToken({ sid: 'foo' }) }).toString());
+      .send(new URLSearchParams({ logout_token: await makeLogoutToken({ sid: 'foo' }) }).toString());
 
     expect(res.statusCode, res.text).to.equal(204);
-    const { cookie } = await client.asyncGet('https://op.example.com/|foo');
+    const { cookie } = await store.get('https://op.example.com/|foo');
     expect(cookie.maxAge).to.equal(999 * 1000);
-    const ttl = await client.asyncTtl('https://op.example.com/|foo');
+    const ttl = await store.ttl('https://op.example.com/|foo');
     expect(ttl).to.be.approximately(999, 5);
   });
 
   it('should set a maxAge based on absolute expiry', async () => {
-    server = await createServer(auth({ ...config, session: { absoluteDuration: 999, rolling: false } }));
+    const server = createApp(auth({ ...config, session: { absoluteDuration: 999, rolling: false } }));
 
     const res = await request(server)
       .post('/backchannel-logout')
       .set('content-type', 'application/x-www-form-urlencoded')
       .send(
         new URLSearchParams({
-          logout_token: makeLogoutToken({ sid: 'foo' }),
+          logout_token: await makeLogoutToken({ sid: 'foo' }),
         }).toString()
       );
 
     expect(res.statusCode, res.text).to.equal(204);
-    const { cookie } = await client.asyncGet('https://op.example.com/|foo');
+    const { cookie } = await store.get('https://op.example.com/|foo');
     expect(cookie.maxAge).to.equal(999 * 1000);
-    const ttl = await client.asyncTtl('https://op.example.com/|foo');
+    const ttl = await store.ttl('https://op.example.com/|foo');
     expect(ttl).to.be.approximately(999, 5);
   });
 
   it('should fail if storing the token fails', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...config,
         backchannelLogout: {
@@ -176,14 +180,14 @@ describe('back-channel logout', () => {
     const res = await request(server)
       .post('/backchannel-logout')
       .set('content-type', 'application/x-www-form-urlencoded')
-      .send(new URLSearchParams({ logout_token: makeLogoutToken({ sid: 'foo' }) }).toString());
+      .send(new URLSearchParams({ logout_token: await makeLogoutToken({ sid: 'foo' }) }).toString());
 
     expect(res.statusCode, res.text).to.equal(400);
     expect(res.body.error).to.equal('application_error');
   });
 
   it('should log sid out on subsequent requests', async () => {
-    server = await createServer(auth(config));
+    const server = createApp(auth(config));
 
     const agent = request.agent(server);
 
@@ -199,23 +203,22 @@ describe('back-channel logout', () => {
       .set('content-type', 'application/x-www-form-urlencoded')
       .send(
         new URLSearchParams({
-          logout_token: makeLogoutToken({ sid: '__foo_sid__' }),
+          logout_token: await makeLogoutToken({ sid: '__foo_sid__' }),
         }).toString()
       );
 
     expect(res.statusCode, res.text).to.equal(204);
-    const payload = await client.asyncGet('https://op.example.com/|__foo_sid__');
+    const payload = await store.get('https://op.example.com/|__foo_sid__');
     expect(payload).to.be.ok;
 
     const { body } = await agent.get('/session');
 
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })).to.be.empty;
-
     expect(body).to.be.be.empty;
+    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })).to.be.empty;
   });
 
   it('should log sub out on subsequent requests', async () => {
-    server = await createServer(auth(config));
+    const server = createApp(auth(config));
 
     const agent = request.agent(server);
 
@@ -230,12 +233,12 @@ describe('back-channel logout', () => {
       .set('content-type', 'application/x-www-form-urlencoded')
       .send(
         new URLSearchParams({
-          logout_token: makeLogoutToken({ sid: '__foo_sub__' }),
+          logout_token: await makeLogoutToken({ sid: '__foo_sub__' }),
         }).toString()
       );
 
     expect(res.statusCode, res.text).to.equal(204);
-    const payload = await client.asyncGet('https://op.example.com/|__foo_sub__');
+    const payload = await store.get('https://op.example.com/|__foo_sub__');
     expect(payload).to.be.ok;
 
     res = await agent.get('/session');
@@ -245,7 +248,7 @@ describe('back-channel logout', () => {
   });
 
   it('should not log sub out if login is after back-channel logout', async () => {
-    server = await createServer(auth(config));
+    const server = createApp(auth(config));
 
     const agent = request.agent(server);
 
@@ -256,16 +259,16 @@ describe('back-channel logout', () => {
       .set('content-type', 'application/x-www-form-urlencoded')
       .send(
         new URLSearchParams({
-          logout_token: makeLogoutToken({ sid: '__foo_sub__' }),
+          logout_token: await makeLogoutToken({ sid: '__foo_sub__' }),
         }).toString()
       );
 
     expect(res.statusCode, res.text).to.equal(204);
-    let payload = await client.asyncGet('https://op.example.com/|__foo_sub__');
+    let payload = await store.get('https://op.example.com/|__foo_sub__');
     expect(payload).to.be.ok;
 
     await onLogin({ oidc: { idTokenClaims: { sub: '__foo_sub__' } } }, getConfig(config));
-    payload = await client.asyncGet('https://op.example.com/|__foo_sub__');
+    payload = await store.get('https://op.example.com/|__foo_sub__');
     expect(payload).to.not.be.ok;
 
     const { body } = await agent.get('/session');
@@ -275,7 +278,7 @@ describe('back-channel logout', () => {
   });
 
   it('should handle failures to get logout token', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...config,
         backchannelLogout: {

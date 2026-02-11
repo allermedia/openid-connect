@@ -1,8 +1,14 @@
 import crypto from 'node:crypto';
 
+import { SignJWT, importJWK } from 'jose';
+
+import Debug from '../../src/debug.js';
+
+const debug = Debug('test');
+
 // Simple JWT signing for tests (replacing jose.JWT.sign from v2)
 export const JWT = {
-  sign: (payload, secret, options = {}) => {
+  sign(payload, secret, options = {}) {
     const alg = options.algorithm || 'HS256';
     const header = {
       alg,
@@ -24,7 +30,7 @@ export const JWT = {
     return `${encodedHeader}.${encodedPayload}.${fakeSignature}`;
   },
 
-  decode: (jwt, options = {}) => {
+  decode(jwt, options = {}) {
     const parts = jwt.split('.');
     if (parts.length !== 3) {
       throw new Error('Invalid JWT format');
@@ -76,17 +82,15 @@ export const kid = jwkKey.kid;
 
 // Simple JWT creation for test purposes
 // Creates a properly signed JWT using the test private key
-export const makeIdToken = async (payload = {}) => {
-  // Import jose dynamically to avoid top-level import issues
-  const { SignJWT, importJWK } = await import('jose');
-
+export async function makeIdToken(payload = {}) {
+  const epoch = Math.floor(Date.now() / 1000);
   const mergedPayload = {
     nickname: '__test_nickname__',
     sub: '__test_sub__',
     iss: 'https://op.example.com/',
     aud: '__test_client_id__',
-    iat: Math.round(Date.now() / 1000),
-    exp: Math.round(Date.now() / 1000) + 60000,
+    iat: epoch,
+    exp: epoch + 60000,
     nonce: '__test_nonce__',
     ...payload,
   };
@@ -100,8 +104,7 @@ export const makeIdToken = async (payload = {}) => {
 
     return jwt;
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Error creating signed test token:', error);
+    debug('Error creating signed test token:', error);
     // Fallback to unsigned token if signing fails
     const header = {
       alg: 'RS256',
@@ -115,9 +118,9 @@ export const makeIdToken = async (payload = {}) => {
 
     return `${encodedHeader}.${encodedPayload}.${fakeSignature}`;
   }
-};
+}
 
-export const makeLogoutToken = ({ payload = {}, sid, sub, secret } = {}) => {
+export async function makeLogoutToken({ payload = {}, sid, sub, secret } = {}) {
   const header = {
     alg: secret ? 'HS256' : 'RS256',
     typ: 'logout+jwt',
@@ -130,28 +133,58 @@ export const makeLogoutToken = ({ payload = {}, sid, sub, secret } = {}) => {
     },
     iss: 'https://op.example.com/',
     aud: '__test_client_id__',
-    iat: Math.round(Date.now() / 1000),
+    iat: Math.floor(Date.now() / 1000),
     jti: crypto.randomBytes(16).toString('hex'),
     ...(sid && { sid }),
     ...(sub && { sub }),
     ...payload,
   };
 
-  // Base64url encode header and payload
-  const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
-  const encodedPayload = Buffer.from(JSON.stringify(mergedPayload)).toString('base64url');
+  try {
+    // Convert the full JWK (with private components) to a KeyLike for signing
+    const privateKey = await importJWK(jwkKey, header.alg);
 
-  // For testing purposes, use a fake signature
-  const fakeSignature = 'fake_logout_signature_for_testing';
+    // Create properly signed JWT
+    const jwt = await new SignJWT(mergedPayload).setProtectedHeader(header).sign(privateKey);
 
-  return `${encodedHeader}.${encodedPayload}.${fakeSignature}`;
-};
+    return jwt;
+  } catch (error) {
+    debug('Error creating signed test token:', error);
 
-// For backward compatibility - exported keys need to be resolved at runtime
-export default {
-  jwks,
-  key: keyPEM,
-  kid,
-  makeIdToken,
-  makeLogoutToken,
-};
+    // Base64url encode header and payload
+    const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+    const encodedPayload = Buffer.from(JSON.stringify(mergedPayload)).toString('base64url');
+
+    // For testing purposes, use a fake signature
+    const fakeSignature = 'fake_logout_signature_for_testing';
+
+    return `${encodedHeader}.${encodedPayload}.${fakeSignature}`;
+  }
+}
+
+/**
+ * Make proper logout token
+ * @param {object} options
+ * @param {import('jose').JWTPayload} [options.payload]
+ * @param {import('jose').JWTHeaderParameters} [options.headers]
+ */
+export async function makeProperLogoutToken(options) {
+  const privateKey = await importJWK(jwkKey, options?.headers?.alg ?? 'RS256');
+  return new SignJWT({
+    events: {
+      'http://schemas.openid.net/event/backchannel-logout': {},
+    },
+    iss: 'https://op.example.com/',
+    aud: '__test_client_id__',
+    iat: Math.floor(Date.now() / 1000),
+    jti: crypto.randomBytes(16).toString('hex'),
+    ...options?.payload,
+  })
+    .setProtectedHeader({
+      alg: 'RS256',
+      typ: 'logout+jwt',
+      kid: jwkKey.kid,
+      ...options?.headers,
+    })
+    .sign(privateKey);
+}

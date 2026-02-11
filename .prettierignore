@@ -1,4 +1,6 @@
 CHANGELOG.md
 coverage
-.nyc_output
 docs
+types/index.d.ts
+lib/
+tmp/

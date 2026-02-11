@@ -3,14 +3,12 @@ import { mock } from 'node:test';
 
 import request from 'supertest';
 
-import appSession from '../src/appSession.js';
-import { get as getConfig } from '../src/config.js';
+import { getConfig } from '../src/config.js';
+import appSession from '../src/middleware/appSession.js';
 
 import { makeIdToken } from './fixture/cert.js';
-import { create as createServer } from './fixture/server.js';
-import sessionEncryption from './fixture/sessionEncryption.js';
-
-const { encrypted } = sessionEncryption;
+import { createApp } from './fixture/server.js';
+import { encrypted } from './fixture/sessionEncryption.js';
 
 const defaultConfig = {
   clientID: '__test_client_id__',
@@ -28,36 +26,32 @@ const baseUrl = 'http://localhost:3000';
  * @param {import('supertest').Agent} agent
  * @param {Record<string, any>} claims
  */
-function login(agent, claims) {
-  return agent.post('/session').send({ id_token: makeIdToken(claims) });
+async function login(agent, claims) {
+  return agent.post('/session').send({ id_token: await makeIdToken(claims) });
 }
 
 const HR_MS = 60 * 60 * 1000;
 
 describe('appSession', () => {
-  /** @type {import('http').Server} */
-  let server;
-
   afterEach(() => {
     mock.timers.reset();
-    server?.close();
   });
 
   it('should not create a session when there are no cookies', async () => {
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
     const res = await request(server).get('/session');
     expect(res.body, res.text).to.be.empty;
   });
 
   it('should not error for malformed sessions', async () => {
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
     const res = await request(server).get('/session').set('cookie', 'appSession=__invalid_identity__');
     expect(res.statusCode, res.text).to.equal(200);
     expect(res.body, res.text).to.be.empty;
   });
 
   it('should not error with JWEDecryptionFailed when using old secrets', async () => {
-    server = await createServer(
+    const server = createApp(
       appSession(
         getConfig({
           ...defaultConfig,
@@ -72,14 +66,14 @@ describe('appSession', () => {
   });
 
   it('should get an existing session', async () => {
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
     const res = await request(server).get('/session').set('cookie', `appSession=${encrypted}`);
     expect(res.statusCode, res.text).to.equal(200);
     expect(res.body.sub).to.equal('__test_sub__');
   });
 
   it('should chunk and accept chunked cookies over 4kb', async () => {
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
     const agent = request.agent(server);
 
     const random = crypto.randomBytes(4000).toString('base64');
@@ -101,7 +95,7 @@ describe('appSession', () => {
   });
 
   it('should limit total cookie size to 4096 Bytes', async () => {
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
     const agent = request.agent(server);
 
     const res = await agent.post('/session').send({
@@ -120,7 +114,7 @@ describe('appSession', () => {
 
   it('should limit total cookie size to 4096 Bytes with custom path', async () => {
     const path = '/some-really-really-really-really-really-really-really-really-really-really-really-really-really-long-path';
-    server = await createServer(appSession(getConfig({ ...defaultConfig, session: { cookie: { path } } })));
+    const server = createApp(appSession(getConfig({ ...defaultConfig, session: { cookie: { path } } })));
 
     const res = await request(server)
       .post('/session')
@@ -139,7 +133,7 @@ describe('appSession', () => {
   });
 
   it('should clean up single cookie when switching to chunked', async () => {
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
 
     const agent = request.agent(server);
 
@@ -165,7 +159,7 @@ describe('appSession', () => {
   });
 
   it('should clean up chunked cookies when switching to single cookie', async () => {
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
 
     const agent = request.agent(server);
 
@@ -191,7 +185,7 @@ describe('appSession', () => {
   });
 
   it('should handle unordered chunked cookies', async () => {
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
 
     const agent1 = request.agent(server);
 
@@ -222,7 +216,7 @@ describe('appSession', () => {
   });
 
   it('should not throw for malformed cookie chunks', async () => {
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
 
     const agent = request.agent(server);
 
@@ -239,7 +233,7 @@ describe('appSession', () => {
   it('should set the default cookie options over http', async () => {
     mock.timers.enable({ apis: ['Date'], now: new Date() });
 
-    server = await createServer(appSession(getConfig({ ...defaultConfig, baseURL: 'http://example.org' })));
+    const server = createApp(appSession(getConfig({ ...defaultConfig, baseURL: 'http://example.org' })));
 
     const agent = request.agent(server);
 
@@ -260,7 +254,7 @@ describe('appSession', () => {
   });
 
   it('should set the default cookie options over https', async () => {
-    server = await createServer(appSession(getConfig({ ...defaultConfig, baseURL: 'https://example.org' })));
+    const server = createApp(appSession(getConfig({ ...defaultConfig, baseURL: 'https://example.org' })));
 
     const agent = request.agent(server);
 
@@ -270,7 +264,7 @@ describe('appSession', () => {
   });
 
   it('should set the custom cookie options', async () => {
-    server = await createServer(
+    const server = createApp(
       appSession(
         getConfig({
           ...defaultConfig,
@@ -298,7 +292,7 @@ describe('appSession', () => {
   });
 
   it('should disregard custom id generation without a custom store', async () => {
-    server = await createServer(
+    const server = createApp(
       appSession(
         getConfig({
           ...defaultConfig,
@@ -320,7 +314,7 @@ describe('appSession', () => {
   });
 
   it('should use a custom cookie name', async () => {
-    server = await createServer(
+    const server = createApp(
       appSession(
         getConfig({
           ...defaultConfig,
@@ -339,7 +333,7 @@ describe('appSession', () => {
   });
 
   it('should set an ephemeral cookie', async () => {
-    server = await createServer(
+    const server = createApp(
       appSession(
         getConfig({
           ...defaultConfig,
@@ -362,7 +356,7 @@ describe('appSession', () => {
 
     mock.timers.enable({ apis: ['Date'], now: new Date() });
 
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
 
     const agent = request.agent(server);
 
@@ -376,7 +370,7 @@ describe('appSession', () => {
   });
 
   it('should throw for duplicate mw', async () => {
-    server = await createServer((req, res, next) => {
+    const server = createApp((req, res, next) => {
       req.appSession = {};
       appSession(getConfig(defaultConfig))(req, res, next);
     });
@@ -386,7 +380,7 @@ describe('appSession', () => {
   });
 
   it('should throw for reassigning session', async () => {
-    server = await createServer((req, res, next) => {
+    const server = createApp((req, res, next) => {
       appSession(getConfig(defaultConfig))(req, res, () => {
         try {
           req.appSession = {};
@@ -403,7 +397,7 @@ describe('appSession', () => {
   });
 
   it('should not throw for reassigining session to empty', async () => {
-    server = await createServer((req, res, next) => {
+    const server = createApp((req, res, next) => {
       appSession(getConfig(defaultConfig))(req, res, () => {
         req.appSession = null;
         req.appSession = undefined;
@@ -417,7 +411,7 @@ describe('appSession', () => {
   it('should expire after 24hrs of inactivity by default', async () => {
     mock.timers.enable({ apis: ['Date'], now: new Date() });
 
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
 
     const agent = request.agent(server);
 
@@ -438,7 +432,7 @@ describe('appSession', () => {
   it('should expire after 7days regardless of activity by default', async () => {
     mock.timers.enable({ apis: ['Date'], now: new Date() });
 
-    server = await createServer(appSession(getConfig(defaultConfig)));
+    const server = createApp(appSession(getConfig(defaultConfig)));
 
     const agent = request.agent(server);
 
@@ -459,7 +453,7 @@ describe('appSession', () => {
   it('should expire only after defined absoluteDuration', async () => {
     mock.timers.enable({ apis: ['Date'], now: new Date() });
 
-    server = await createServer(
+    const server = createApp(
       appSession(
         getConfig({
           ...defaultConfig,
@@ -488,7 +482,7 @@ describe('appSession', () => {
   it('should expire only after defined rollingDuration period of inactivty', async () => {
     mock.timers.enable({ apis: ['Date'], now: new Date() });
 
-    server = await createServer(
+    const server = createApp(
       appSession(
         getConfig({
           ...defaultConfig,

@@ -1,36 +1,36 @@
-import { randomNonce, randomPKCECodeVerifier, calculatePKCECodeChallenge } from 'openid-client';
+import { COOKIES } from './constants.js';
+import { signCookie, verifyCookie, getEncryptionKeyStore } from './crypto.js';
 
-import COOKIES from './cookies.js';
-import { signCookie as generateCookieValue, verifyCookie as getCookieValue, getKeyStore } from './crypto.js';
-
-export default class TransientCookieHandler {
-  constructor({ secret, session, legacySameSiteCookie }) {
-    let [current, keystore] = getKeyStore(secret);
-
-    if (keystore.size === 1) {
-      keystore = current;
-    }
+/**
+ * Transaction cookie handler to handle cookies between login and callback
+ */
+export class TransientCookieHandler {
+  /**
+   * @param {Partial<import('types').ConfigParams>} config
+   */
+  constructor(config) {
+    const [current, keystore] = getEncryptionKeyStore(config.secret);
     this.currentKey = current;
     this.keyStore = keystore;
-    this.sessionCookieConfig = (session && session.cookie) || {};
-    this.legacySameSiteCookie = legacySameSiteCookie;
+    /** @type {Partial<import('types').CookieConfigParams>} */
+    this.sessionCookieConfig = config.session?.cookie || {};
+    this.legacySameSiteCookie = config.legacySameSiteCookie;
   }
 
   /**
    * Set a cookie with a value or a generated nonce.
    *
-   * @param {String} key Cookie name to use.
-   * @param {Object} req Express Request object.
-   * @param {Object} res Express Response object.
-   * @param {Object} opts Options object.
-   * @param {String} opts.sameSite SameSite attribute of "None," "Lax," or "Strict". Default is "None."
-   * @param {String} opts.value Cookie value. Omit this key to store a generated value.
-   * @param {Boolean} opts.legacySameSiteCookie Should a fallback cookie be set? Default is true.
+   * @param {string} cookieName Cookie name to use.
+   * @param {import('express').Response} res Express Response object.
+   * @param {string} value Cookie value
+   * @param {Object} opts Cookie options
+   * @param {"lax"|"none"|"strict"|boolean} [opts.sameSite] SameSite attribute of "none," "lax," or "strict". Default is "none".
+   * @param {Boolean} [opts.legacySameSiteCookie] Should a fallback cookie be set? Default is true.
    *
-   * @return {String} Cookie value that was set.
+   * @return {string} Cookie value that was set.
    */
-  store(key, req, res, { sameSite = 'None', value = this.generateNonce() } = {}) {
-    const isSameSiteNone = sameSite === 'None';
+  store(res, cookieName, value, opts) {
+    const isSameSiteNone = (opts?.sameSite ?? 'none') === 'none';
     const { domain, path, secure } = this.sessionCookieConfig;
     const basicAttr = {
       httpOnly: true,
@@ -39,20 +39,18 @@ export default class TransientCookieHandler {
       path,
     };
 
-    {
-      const cookieValue = generateCookieValue(key, value, this.currentKey);
-      // Set the cookie with the SameSite attribute and, if needed, the Secure flag.
-      res.cookie(key, cookieValue, {
-        ...basicAttr,
-        sameSite,
-        secure: isSameSiteNone ? true : basicAttr.secure,
-      });
-    }
+    const cookieValue = signCookie(cookieName, value, this.currentKey);
+    // Set the cookie with the SameSite attribute and, if needed, the Secure flag.
+    res.cookie(cookieName, cookieValue, {
+      ...basicAttr,
+      sameSite: opts?.sameSite ?? 'none',
+      secure: isSameSiteNone ? true : basicAttr.secure,
+    });
 
     if (isSameSiteNone && this.legacySameSiteCookie) {
-      const cookieValue = generateCookieValue(`_${key}`, value, this.currentKey);
+      const cookieValue = signCookie(`_${cookieName}`, value, this.currentKey);
       // Set the fallback cookie with no SameSite or Secure attributes.
-      res.cookie(`_${key}`, cookieValue, basicAttr);
+      res.cookie(`_${cookieName}`, cookieValue, basicAttr);
     }
 
     return value;
@@ -61,9 +59,9 @@ export default class TransientCookieHandler {
   /**
    * Get a cookie value then delete it.
    *
-   * @param {String} key Cookie name to use.
-   * @param {Object} req Express Request object.
-   * @param {Object} res Express Response object.
+   * @param {string} key Cookie name to use.
+   * @param {import('express').Request} req Express Request object.
+   * @param {import('express').Response} res Express Response object.
    *
    * @return {String|undefined} Cookie value or undefined if cookie was not found.
    */
@@ -74,13 +72,13 @@ export default class TransientCookieHandler {
 
     const { secure, sameSite } = this.sessionCookieConfig;
 
-    let value = getCookieValue(key, req[COOKIES][key], this.keyStore);
+    let value = verifyCookie(key, req[COOKIES][key], this.keyStore);
     this.deleteCookie(key, res, { secure, sameSite });
 
     if (this.legacySameSiteCookie) {
       const fallbackKey = `_${key}`;
       if (!value) {
-        value = getCookieValue(fallbackKey, req[COOKIES][fallbackKey], this.keyStore);
+        value = verifyCookie(fallbackKey, req[COOKIES][fallbackKey], this.keyStore);
       }
       this.deleteCookie(fallbackKey, res);
     }
@@ -89,40 +87,11 @@ export default class TransientCookieHandler {
   }
 
   /**
-   * Generates a nonce value.
-   *
-   * @return {String}
-   */
-  generateNonce() {
-    return randomNonce();
-  }
-
-  /**
-   * Generates a code_verifier value.
-   *
-   * @return {String}
-   */
-  generateCodeVerifier() {
-    return randomPKCECodeVerifier();
-  }
-
-  /**
-   * Calculates a code_challenge value for a given codeVerifier
-   *
-   * @param {String} codeVerifier Code Verifier to calculate the code_challenge value from.
-   *
-   * @return {String}
-   */
-  calculateCodeChallenge(codeVerifier) {
-    return calculatePKCECodeChallenge(codeVerifier);
-  }
-
-  /**
    * Clears the cookie from the browser by setting an empty value and an expiration date in the past
    *
-   * @param {String} name Cookie name
-   * @param {Object} res Express Response object
-   * @param {Object?} opts Optional SameSite and Secure cookie options for modern browsers
+   * @param {string} name Cookie name
+   * @param {import('express').Response} res Express Response object
+   * @param {any} opts Optional SameSite and Secure cookie options for modern browsers
    */
   deleteCookie(name, res, opts = {}) {
     const { domain, path } = this.sessionCookieConfig;

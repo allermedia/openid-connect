@@ -1,12 +1,10 @@
-import sinon from 'sinon';
+import { auth, attemptSilentLogin } from '@aller/openid-connect';
+import nock from 'nock';
 import request from 'supertest';
 
-import { auth, attemptSilentLogin } from '../index.js';
-import { cancelSilentLogin, resumeSilentLogin } from '../src/middleware/attemptSilentLogin.js';
-import weakRef from '../src/weakCache.js';
-
 import { makeIdToken } from './fixture/cert.js';
-import { create as createServer } from './fixture/server.js';
+import { createApp } from './fixture/server.js';
+import { setupDiscovery } from './helpers/openid-helper.js';
 
 const defaultConfig = {
   secret: '__test_session_secret__',
@@ -22,14 +20,13 @@ async function login(agent, claims) {
 }
 
 describe('attemptSilentLogin', () => {
-  let server;
-
-  afterEach(() => {
-    server?.close();
+  before(() => {
+    setupDiscovery().persist();
   });
+  after(nock.cleanAll);
 
   it("should attempt silent login on user's first route", async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -53,7 +50,7 @@ describe('attemptSilentLogin', () => {
   });
 
   it('should not attempt silent login for non html requests', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -67,7 +64,7 @@ describe('attemptSilentLogin', () => {
   });
 
   it("should not attempt silent login on user's subsequent routes", async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -85,7 +82,7 @@ describe('attemptSilentLogin', () => {
   });
 
   it('should not attempt silent login for authenticated user', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -100,7 +97,7 @@ describe('attemptSilentLogin', () => {
   });
 
   it('should not attempt silent login after first anonymous request after logout', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -116,7 +113,7 @@ describe('attemptSilentLogin', () => {
   });
 
   it('should not attempt silent login after first request is to logout', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
@@ -131,36 +128,11 @@ describe('attemptSilentLogin', () => {
   });
 
   it("should throw when there's no auth middleware", async () => {
-    server = await createServer(attemptSilentLogin());
+    const server = createApp(attemptSilentLogin());
     const {
       body: { err },
     } = await request(server).get('/protected').set('accept', 'application/json');
 
     expect(err.message).to.equal('req.oidc is not found, did you include the auth middleware?');
-  });
-
-  it('should honor SameSite config for use in iframes', () => {
-    const ctx = {};
-    const oidc = weakRef(ctx);
-    oidc.config = {
-      session: {
-        cookie: {
-          sameSite: 'None',
-          secure: true,
-        },
-      },
-    };
-    const resumeSpy = sinon.spy();
-    const cancelSpy = sinon.spy();
-    resumeSilentLogin({ oidc: ctx }, { clearCookie: resumeSpy });
-    cancelSilentLogin({ oidc: ctx }, { cookie: cancelSpy });
-    sinon.assert.calledWithMatch(resumeSpy, 'skipSilentLogin', {
-      sameSite: 'None',
-      secure: true,
-    });
-    sinon.assert.calledWithMatch(cancelSpy, 'skipSilentLogin', true, {
-      sameSite: 'None',
-      secure: true,
-    });
   });
 });

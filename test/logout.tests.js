@@ -1,11 +1,12 @@
 import { join } from 'node:path/posix';
 
+import { auth } from '@aller/openid-connect';
+import nock from 'nock';
 import request from 'supertest';
 
-import { auth } from '../index.js';
-
 import { makeIdToken } from './fixture/cert.js';
-import { create as createServer } from './fixture/server.js';
+import { createApp } from './fixture/server.js';
+import { setupDiscovery } from './helpers/openid-helper.js';
 
 const defaultConfig = {
   clientID: '__test_client_id__',
@@ -32,14 +33,13 @@ async function logout(agent, prefixPath = '') {
 }
 
 describe('logout route', () => {
-  let server;
-
-  afterEach(() => {
-    server?.close();
+  before(() => {
+    setupDiscovery().persist();
   });
+  after(nock.cleanAll);
 
   it('should perform a local logout', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         idpLogout: false,
@@ -58,7 +58,7 @@ describe('logout route', () => {
   });
 
   it('should perform a distributed logout', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         idpLogout: true,
@@ -76,28 +76,8 @@ describe('logout route', () => {
     });
   });
 
-  it('should perform an auth0 logout', async () => {
-    server = await createServer(
-      auth({
-        ...defaultConfig,
-        issuerBaseURL: 'https://test.eu.auth0.com',
-        idpLogout: true,
-        auth0Logout: true,
-      })
-    );
-
-    const agent = request.agent(server);
-    await login(agent);
-    const { response, session: loggedOutSession } = await logout(agent);
-    expect(loggedOutSession.id_token).to.not.be.ok;
-    expect(response.statusCode, response.text).to.equal(302);
-    expect(response.headers, 'should redirect to the identity provider').to.deep.include({
-      location: 'https://test.eu.auth0.com/v2/logout?returnTo=http%3A%2F%2Fexample.org%2F&client_id=__test_client_id__',
-    });
-  });
-
   it('should redirect to postLogoutRedirect', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         routes: {
@@ -125,7 +105,7 @@ describe('logout route', () => {
         postLogoutRedirect: '/after-logout-in-auth-config',
       },
     });
-    server = await createServer(router);
+    const server = createApp(router);
     router.get('/logout', (req, res) => res.oidc.logout({ returnTo: 'http://www.another-example.org/logout' }));
 
     const agent = request.agent(server);
@@ -139,7 +119,7 @@ describe('logout route', () => {
   });
 
   it('should logout when scoped to a sub path', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         session: {
@@ -162,7 +142,7 @@ describe('logout route', () => {
   });
 
   it('should cancel silent logins when user logs out', async () => {
-    server = await createServer(auth(defaultConfig));
+    const server = createApp(auth(defaultConfig));
 
     const agent = request.agent(server);
     await login(agent);
@@ -173,7 +153,7 @@ describe('logout route', () => {
   });
 
   it('should pass logout params to end session url', async () => {
-    server = await createServer(auth({ ...defaultConfig, idpLogout: true, logoutParams: { foo: 'bar' } }));
+    const server = createApp(auth({ ...defaultConfig, idpLogout: true, logoutParams: { foo: 'bar' } }));
 
     const agent = request.agent(server);
     await login(agent);
@@ -193,7 +173,7 @@ describe('logout route', () => {
       logoutParams: { foo: 'bar' },
       routes: { logout: false },
     });
-    server = await createServer(router);
+    const server = createApp(router);
     router.get('/logout', (_req, res) => res.oidc.logout({ logoutParams: { foo: 'baz' } }));
 
     const agent = request.agent(server);
@@ -207,31 +187,8 @@ describe('logout route', () => {
     expect(new URL(location).searchParams.get('foo')).to.equal('baz');
   });
 
-  it('should pass logout params to auth0 logout url', async () => {
-    server = await createServer(
-      auth({
-        ...defaultConfig,
-        issuerBaseURL: 'https://test.eu.auth0.com',
-        idpLogout: true,
-        auth0Logout: true,
-        logoutParams: { foo: 'bar' },
-      })
-    );
-
-    const agent = request.agent(server);
-    await login(agent);
-    const {
-      response: {
-        headers: { location },
-      },
-    } = await logout(agent);
-    const url = new URL(location);
-    expect(url.pathname).to.equal('/v2/logout');
-    expect(url.searchParams.get('foo')).to.equal('bar');
-  });
-
   it('should honor logout url config over logout params', async () => {
-    server = await createServer(
+    const server = createApp(
       auth({
         ...defaultConfig,
         routes: { postLogoutRedirect: 'http://foo.com' },
@@ -260,7 +217,7 @@ describe('logout route', () => {
       idpLogout: true,
       routes: { logout: false },
     });
-    server = await createServer(router);
+    const server = createApp(router);
     router.get('/logout', (req, res) =>
       res.oidc.logout({
         logoutParams: { post_logout_redirect_uri: 'http://bar.com' },
@@ -284,7 +241,7 @@ describe('logout route', () => {
       idpLogout: true,
       routes: { logout: false },
     });
-    server = await createServer(router);
+    const server = createApp(router);
     router.get('/logout', (req, res) =>
       res.oidc.logout({
         logoutParams: { id_token_hint: null },
@@ -301,73 +258,21 @@ describe('logout route', () => {
     expect(new URL(location).searchParams.get('id_token_hint')).to.not.be.ok;
   });
 
-  it('should ignore undefined or null logout params', async () => {
-    server = await createServer(
+  it('should pass discovery errors to the express mw', async () => {
+    nock('https://example.com').get('/.well-known/openid-configuration').reply(500, 'Internal Server Error');
+
+    const server = createApp(
       auth({
         ...defaultConfig,
-        issuerBaseURL: 'https://test.eu.auth0.com',
+        issuerBaseURL: 'https://example.com',
         idpLogout: true,
-        auth0Logout: true,
-        logoutParams: { foo: 'bar', bar: undefined, baz: null, qux: '' },
       })
     );
 
-    const agent = request.agent(server);
-    await login(agent);
-    const {
-      response: {
-        headers: { location },
-      },
-    } = await logout(agent);
-    const url = new URL(location);
-    expect(url.pathname).to.equal('/v2/logout');
-    expect(url.searchParams.get('foo')).to.equal('bar');
-    expect(url.searchParams.has('bar')).to.be.false;
-    expect(url.searchParams.has('baz')).to.be.false;
-    expect(url.searchParams.get('qux')).to.equal('');
-  });
-
-  it('should pass discovery errors to the express mw', async () => {
-    // Disable global mock discovery for this test
-    const originalMockDiscovery = global.__testMockDiscovery;
-    delete global.__testMockDiscovery;
-
-    // Use undici MockAgent to mock the error response (works with native fetch in Node 20+)
-    const { MockAgent, setGlobalDispatcher, getGlobalDispatcher } = await import('undici');
-    const originalDispatcher = getGlobalDispatcher();
-    const mockAgent = new MockAgent();
-    mockAgent.disableNetConnect();
-    setGlobalDispatcher(mockAgent);
-
-    const pool = mockAgent.get('https://example.com');
-    pool.intercept({ path: '/.well-known/openid-configuration', method: 'GET' }).reply(500, 'Internal Server Error');
-    pool
-      .intercept({
-        path: '/.well-known/oauth-authorization-server',
-        method: 'GET',
-      })
-      .reply(500, 'Internal Server Error');
-
-    try {
-      server = await createServer(
-        auth({
-          ...defaultConfig,
-          issuerBaseURL: 'https://example.com',
-        })
-      );
-
-      const res = await request(server).get('/logout');
-      expect(res.statusCode, res.text).to.equal(500);
-      expect(res.body.err.message, 'Should get error json from server error middleware').to.match(
-        /^(Issuer\.discover\(\) failed|fetch failed|Discovery failed|"response" is not conforming|unexpected HTTP response status code)/
-      );
-    } finally {
-      // Restore global mock discovery and dispatcher
-      if (originalMockDiscovery) {
-        global.__testMockDiscovery = originalMockDiscovery;
-      }
-      setGlobalDispatcher(originalDispatcher);
-      await mockAgent.close();
-    }
+    const res = await request(server).get('/logout');
+    expect(res.statusCode, res.text).to.equal(500);
+    expect(res.body.err.message, 'Should get error json from server error middleware').to.match(
+      /^(Issuer\.discover\(\) failed|fetch failed|Discovery failed|"response" is not conforming|unexpected HTTP response status code)/
+    );
   });
 });

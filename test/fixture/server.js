@@ -1,7 +1,19 @@
 import bodyParser from 'body-parser';
 import express from 'express';
+import { ClientError } from 'openid-client';
 
-export function create(router, protect, path) {
+import { SESSION } from '../../src/constants.js';
+import Debug from '../../src/debug.js';
+import { Session } from '../../src/session.js';
+
+const debug = Debug('test');
+
+/**
+ * @param {import('express').Router} router
+ * @param {import('express').RequestHandler} protect
+ * @param {string} path
+ */
+export function createApp(router, protect, path) {
   const app = express();
 
   app.use(bodyParser.urlencoded({ extended: false }));
@@ -12,7 +24,7 @@ export function create(router, protect, path) {
   }
 
   app.get('/session', (req, res) => {
-    res.json(req.appSession);
+    res.json(req[SESSION]?.getSessionData());
   });
 
   app.post('/session', (req, res) => {
@@ -20,6 +32,13 @@ export function create(router, protect, path) {
       delete req.appSession[prop];
     });
     Object.assign(req.appSession, req.body);
+
+    if (Number(req.get('content-length'))) {
+      req[SESSION] = new Session(req.body, {});
+    } else {
+      req[SESSION] = undefined;
+    }
+
     res.json();
   });
 
@@ -55,19 +74,33 @@ export function create(router, protect, path) {
     res.json(response);
   });
 
+  app.use('/refresh', async (req, res) => {
+    await req.oidc?.accessToken.refresh();
+    return res.redirect(307, req.query.return_to ?? '/');
+  });
+
   if (protect) {
-    app.get('/protected', protect, (req, res) => {
+    app.use('/protected', protect, (_req, res) => {
       res.json({});
     });
   }
 
   // eslint-disable-next-line no-unused-vars
-  app.use((err, req, res, next) => {
+  app.use((err, _req, res, _next) => {
+    debug(err.message, { err });
+    if (err.statusCode || err.cause?.status) {
+      return res.status(err.statusCode || err.cause?.status).send({ err: { ...err, message: err.message } });
+    }
+    if (err instanceof ClientError) {
+      return res.status(400).send({ err: { message: err.message, code: err.code } });
+    }
+
     res.status(err.status || 500).json({
       err: {
         message: err.message,
         error: err.error,
         error_description: err.error_description,
+        code: err.code,
       },
     });
   });
@@ -80,7 +113,12 @@ export function create(router, protect, path) {
     mainApp = app;
   }
 
+  return mainApp;
+}
+
+export function create(router, protect, path) {
+  const app = createApp(router, protect, path);
   return new Promise((resolve) => {
-    const server = mainApp.listen(3000, () => resolve(server));
+    const server = app.listen(3000, () => resolve(server));
   });
 }

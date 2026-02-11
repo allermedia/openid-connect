@@ -1,3 +1,8 @@
 import debug from 'debug';
 
-export default (name) => debug('express-openid-connect').extend(name);
+/**
+ * @param {string} name extend debug with name
+ */
+export default function Debug(name) {
+  return debug('aller-openid-connect').extend(name);
+}

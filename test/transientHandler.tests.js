@@ -1,10 +1,9 @@
 import crypto from 'node:crypto';
 
-import { assert } from 'chai';
 import sinon from 'sinon';
 
-import COOKIES from '../src/cookies.js';
-import TransientCookieHandler from '../src/transientHandler.js';
+import { COOKIES } from '../src/constants.js';
+import { TransientCookieHandler } from '../src/transientHandler.js';
 
 const reqWithCookies = (cookies) => ({ [COOKIES]: cookies });
 const secret = '__test_session_secret__';
@@ -32,13 +31,13 @@ describe('transientHandler', () => {
 
   describe('store()', () => {
     it('should use the passed-in key to set the cookie', () => {
-      transientHandler.store('test_key', {}, res);
+      transientHandler.store(res, 'test_key');
       sinon.assert.calledWith(res.cookie, 'test_key');
       sinon.assert.calledWith(res.cookie, '_test_key');
     });
 
     it('should return the same nonce as the cookie value', () => {
-      const value = transientHandler.store('test_key', {}, res, {});
+      const value = transientHandler.store(res, 'test_key');
       const re = new RegExp(`^${value}\\.`);
       sinon.assert.calledWithMatch(res.cookie, 'test_key', re);
       sinon.assert.calledWithMatch(res.cookie, '_test_key', re);
@@ -55,10 +54,10 @@ describe('transientHandler', () => {
         session: { cookie: { secure: false } },
         legacySameSiteCookie: true,
       });
-      transientHandlerHttps.store('test_key', {}, res, {
+      transientHandlerHttps.store(res, 'test_key', 'foo', {
         sameSite: 'Lax',
       });
-      transientHandlerHttp.store('test_key', {}, res, {
+      transientHandlerHttp.store(res, 'test_key', 'foo', {
         sameSite: 'Lax',
       });
 
@@ -73,10 +72,10 @@ describe('transientHandler', () => {
     });
 
     it('should set SameSite=None, secure, and fallback cookie by default', () => {
-      transientHandler.store('test_key', {}, res);
+      transientHandler.store(res, 'test_key');
 
       sinon.assert.calledWithMatch(res.cookie, 'test_key', '', {
-        sameSite: 'None',
+        sameSite: 'none',
         secure: true,
         httpOnly: true,
       });
@@ -92,14 +91,14 @@ describe('transientHandler', () => {
         secret,
         legacySameSiteCookie: false,
       });
-      transientHandler.store('test_key', {}, res);
+      transientHandler.store(res, 'test_key');
 
       sinon.assert.calledWith(res.cookie, 'test_key');
       sinon.assert.calledOnce(res.cookie);
     });
 
     it('should set custom SameSite with no fallback', () => {
-      transientHandler.store('test_key', {}, res, { sameSite: 'Lax' });
+      transientHandler.store(res, 'test_key', 'foo', { sameSite: 'Lax' });
 
       sinon.assert.calledWithMatch(res.cookie, 'test_key', '', {
         sameSite: 'Lax',
@@ -108,10 +107,8 @@ describe('transientHandler', () => {
     });
 
     it('should use the passed-in value', () => {
-      const value = transientHandler.store('test_key', {}, res, {
-        value: '__test_value__',
-      });
-      assert.equal('__test_value__', value);
+      const value = transientHandler.store(res, 'test_key', '__test_value__');
+      expect(value).to.equal('__test_value__');
       const re = /^__test_value__\./;
       sinon.assert.calledWithMatch(res.cookie, 'test_key', re);
       sinon.assert.calledWithMatch(res.cookie, '_test_key', re);
@@ -120,7 +117,7 @@ describe('transientHandler', () => {
 
   describe('getOnce()', () => {
     it('should return undefined if there are no cookies', () => {
-      assert.isUndefined(transientHandler.getOnce('test_key', reqWithCookies(), res));
+      expect(transientHandler.getOnce('test_key', reqWithCookies(), res)).to.be.undefined;
     });
 
     it('should return main value and delete both cookies by default', () => {
@@ -132,7 +129,7 @@ describe('transientHandler', () => {
       const req = reqWithCookies(cookies);
       const value = transientHandler.getOnce('test_key', req, res);
 
-      assert.equal(value, 'foo');
+      expect(value).to.equal('foo');
 
       sinon.assert.calledWith(res.clearCookie, 'test_key');
       sinon.assert.calledWith(res.clearCookie, '_test_key');
@@ -152,7 +149,7 @@ describe('transientHandler', () => {
       const req = reqWithCookies(cookies);
       const value = transientHandlerHttpsIframe.getOnce('test_key', req, res);
 
-      assert.equal(value, 'foo');
+      expect(value).to.equal('foo');
 
       sinon.assert.calledWithMatch(res.clearCookie, 'test_key', {
         sameSite: 'None',
@@ -171,7 +168,7 @@ describe('transientHandler', () => {
       const req = reqWithCookies(cookies);
       const value = transientHandler.getOnce('test_key', req, res);
 
-      assert.equal(value, 'foo');
+      expect(value).to.equal('foo');
 
       sinon.assert.calledWith(res.clearCookie, 'test_key');
       sinon.assert.calledWith(res.clearCookie, '_test_key');
@@ -190,7 +187,7 @@ describe('transientHandler', () => {
       });
       const value = transientHandler.getOnce('test_key', req, res);
 
-      assert.equal(value, 'foo');
+      expect(value).to.equal('foo');
 
       sinon.assert.calledWith(res.clearCookie, 'test_key');
       sinon.assert.calledOnce(res.clearCookie);
@@ -204,7 +201,7 @@ describe('transientHandler', () => {
       const req = reqWithCookies(cookies);
       const value = transientHandler.getOnce('test_key', req, res);
 
-      assert.isUndefined(value);
+      expect(value).to.be.undefined;
       sinon.assert.calledTwice(res.clearCookie);
     });
   });

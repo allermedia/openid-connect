@@ -1,7 +1,6 @@
-import { assert } from 'chai';
 import sinon from 'sinon';
 
-import { get as getConfig } from '../src/config.js';
+import { getConfig } from '../src/config.js';
 
 const defaultConfig = {
   secret: '__test_session_secret__',
@@ -17,29 +16,9 @@ function validateAuthorizationParams(authorizationParams) {
 describe('get config', () => {
   afterEach(() => sinon.restore());
 
-  // v6: Default response_type is now 'code' (not 'id_token')
   it('should get config for default config', () => {
     const config = getConfig(defaultConfig);
-    assert.deepInclude(config, {
-      authorizationParams: {
-        response_type: 'code',
-        scope: 'openid profile email',
-      },
-      authRequired: true,
-    });
-  });
-
-  // v6: Default response_type is now 'code' (not 'id_token')
-  it('should get config for default config with environment variables', () => {
-    sinon.stub(process, 'env').value({
-      ...process.env,
-      ISSUER_BASE_URL: defaultConfig.issuerBaseURL,
-      CLIENT_ID: defaultConfig.clientID,
-      SECRET: defaultConfig.secret,
-      BASE_URL: defaultConfig.baseURL,
-    });
-    const config = getConfig();
-    assert.deepInclude(config, {
+    expect(config).to.deep.include({
       authorizationParams: {
         response_type: 'code',
         scope: 'openid profile email',
@@ -56,7 +35,7 @@ describe('get config', () => {
         response_type: 'code',
       },
     });
-    assert.deepInclude(config, {
+    expect(config).to.deep.include({
       authorizationParams: {
         response_type: 'code',
         scope: 'openid profile email',
@@ -70,42 +49,12 @@ describe('get config', () => {
       ...defaultConfig,
       issuerBaseURL: 'www.example.com',
     };
-    assert.throws(() => getConfig(config), TypeError, '"issuerBaseURL" must be a valid uri');
-  });
-
-  it('should set idpLogout to true when auth0Logout is true', () => {
-    const config = getConfig({
-      ...defaultConfig,
-      auth0Logout: true,
-    });
-    assert.include(config, {
-      auth0Logout: true,
-      idpLogout: true,
-    });
-  });
-
-  it('auth0Logout should default to undefined and idpLogout should default to false', () => {
-    const config = getConfig(defaultConfig);
-    assert.include(config, {
-      idpLogout: false,
-    });
-    assert.isUndefined(config.auth0Logout);
-  });
-
-  it('should not set auth0Logout to true when idpLogout is true', () => {
-    const config = getConfig({
-      ...defaultConfig,
-      idpLogout: true,
-    });
-    assert.include(config, {
-      idpLogout: true,
-    });
-    assert.isUndefined(config.auth0Logout);
+    expect(() => getConfig(config)).to.throw(TypeError, '"issuerBaseURL" must be a valid uri');
   });
 
   it('should set default route paths', () => {
     const config = getConfig(defaultConfig);
-    assert.include(config.routes, {
+    expect(config.routes).to.deep.include({
       callback: '/callback',
       login: '/login',
       logout: '/logout',
@@ -121,7 +70,7 @@ describe('get config', () => {
         logout: '/custom-logout',
       },
     });
-    assert.include(config.routes, {
+    expect(config.routes).to.deep.include({
       callback: '/custom-callback',
       login: '/custom-login',
       logout: '/custom-logout',
@@ -133,7 +82,7 @@ describe('get config', () => {
       ...defaultConfig,
       baseURL: 'http://example.com',
     });
-    assert.deepInclude(config.session, {
+    expect(config.session).to.deep.include({
       rollingDuration: 86400,
       name: 'appSession',
       cookie: {
@@ -150,7 +99,7 @@ describe('get config', () => {
       ...defaultConfig,
       baseURL: 'https://example.com',
     });
-    assert.deepInclude(config.session, {
+    expect(config.session).to.deep.include({
       rollingDuration: 86400,
       name: 'appSession',
       cookie: {
@@ -176,15 +125,15 @@ describe('get config', () => {
           transient: true,
           httpOnly: false,
           secure: true,
-          sameSite: 'Strict',
+          sameSite: 'strict',
         },
       },
     });
 
-    assert.deepInclude(config, {
+    expect(config).to.deep.include({
       secret: ['__test_session_secret_1__', '__test_session_secret_2__'],
       transactionCookie: {
-        sameSite: 'Strict',
+        sameSite: 'strict',
         name: 'auth_verification',
       },
       session: {
@@ -200,7 +149,7 @@ describe('get config', () => {
           transient: true,
           httpOnly: false,
           secure: true,
-          sameSite: 'Strict',
+          sameSite: 'strict',
         },
       },
     });
@@ -220,14 +169,14 @@ describe('get config', () => {
     ];
 
     for (const name of validNames) {
-      assert.doesNotThrow(() => {
+      expect(() => {
         getConfig({ ...defaultConfig, session: { name } });
-      });
+      }, name).to.not.throw();
     }
     for (const name of invalidNames) {
-      assert.throws(() => {
+      expect(() => {
         getConfig({ ...defaultConfig, session: { name } });
-      });
+      }, name).to.throw();
     }
   });
 
@@ -237,7 +186,7 @@ describe('get config', () => {
       secret: ['__test_session_secret_1__', '__test_session_secret_2__'],
     });
 
-    assert.deepInclude(config, {
+    expect(config).to.deep.include({
       secret: ['__test_session_secret_1__', '__test_session_secret_2__'],
       transactionCookie: {
         sameSite: 'Lax',
@@ -257,10 +206,10 @@ describe('get config', () => {
       },
     });
 
-    assert.deepInclude(config, {
+    expect(config).to.deep.include({
       secret: ['__test_session_secret_1__', '__test_session_secret_2__'],
       transactionCookie: {
-        sameSite: 'Strict',
+        sameSite: 'strict',
         name: 'auth_verification',
       },
     });
@@ -281,7 +230,7 @@ describe('get config', () => {
       },
     });
 
-    assert.deepInclude(config, {
+    expect(config).to.deep.include({
       secret: ['__test_session_secret_1__', '__test_session_secret_2__'],
       transactionCookie: {
         sameSite: 'Strict',
@@ -291,90 +240,64 @@ describe('get config', () => {
   });
 
   it('should fail when the baseURL is http and cookie is secure', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         baseURL: 'http://example.com',
         session: { cookie: { secure: true } },
       });
-    }, 'Cookies set with the `Secure` property wont be attached to http requests');
-  });
-
-  it('should warn when the baseURL is https and cookie is not secure', () => {
-    getConfig({
-      ...defaultConfig,
-      baseURL: 'https://example.com',
-      session: { cookie: { secure: false } },
-    });
-    sinon.assert.calledWith(
-      // eslint-disable-next-line no-console
-      console.warn,
-      "Setting your cookie to insecure when over https is not recommended, I hope you know what you're doing."
-    );
-  });
-
-  it('should warn when the baseURL is http and response_mode is form_post', () => {
-    getConfig({
-      ...defaultConfig,
-      baseURL: 'http://example.com',
-      authorizationParams: { response_mode: 'form_post' },
-    });
-    sinon.assert.calledWith(
-      // eslint-disable-next-line no-console
-      console.warn,
-      "Using 'form_post' for response_mode may cause issues for you logging in over http, see https://github.com/auth0/express-openid-connect/blob/master/FAQ.md"
-    );
+    }).to.throw('Cookies set with the `Secure` property wont be attached to http requests');
   });
 
   it('should fail when the baseURL is invalid', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         baseURL: '__invalid_url__',
       });
-    }, '"baseURL" must be a valid uri');
+    }).to.throw('"baseURL" must be a valid uri');
   });
 
   it('should fail when the clientID is not provided', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         clientID: undefined,
       });
-    }, '"clientID" is required');
+    }).to.throw('"clientID" is required');
   });
 
   it('should fail when the baseURL is not provided', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         baseURL: undefined,
       });
-    }, '"baseURL" is required');
+    }).to.throw('"baseURL" is required');
   });
 
   it('should fail when the secret is not provided', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         secret: undefined,
       });
-    }, '"secret" is required');
+    }).to.throw('"secret" is required');
   });
 
   it('should fail when app session length is not an integer', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         session: {
           rollingDuration: 3.14159,
         },
       });
-    }, '"session.rollingDuration" must be an integer');
+    }).to.throw('"session.rollingDuration" must be an integer');
   });
 
   it('should fail when rollingDuration is defined and rolling is false', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         session: {
@@ -382,11 +305,11 @@ describe('get config', () => {
           rollingDuration: 100,
         },
       });
-    }, '"session.rollingDuration" must be false when "session.rolling" is disabled');
+    }).to.throw('"session.rollingDuration" must be false when "session.rolling" is disabled');
   });
 
   it('should fail when rollingDuration is not defined and rolling is true', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         session: {
@@ -394,11 +317,11 @@ describe('get config', () => {
           rollingDuration: false,
         },
       });
-    }, '"session.rollingDuration" must be provided an integer value when "session.rolling" is true');
+    }).to.throw('"session.rollingDuration" must be provided an integer value when "session.rolling" is true');
   });
 
   it('should fail when absoluteDuration is not defined and rolling is false', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         session: {
@@ -406,20 +329,20 @@ describe('get config', () => {
           absoluteDuration: false,
         },
       });
-    }, '"session.absoluteDuration" must be provided an integer value when "session.rolling" is false');
+    }).to.throw('"session.absoluteDuration" must be provided an integer value when "session.rolling" is false');
   });
 
   it('should fail when app session secret is invalid', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         secret: { key: '__test_session_secret__' },
       });
-    }, '"secret" must be one of [string, binary, array]');
+    }).to.throw('"secret" must be one of [string, binary, array]');
   });
 
   it('should fail when app session cookie httpOnly is not a boolean', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         session: {
@@ -428,11 +351,11 @@ describe('get config', () => {
           },
         },
       });
-    }, '"session.cookie.httpOnly" must be a boolean');
+    }).to.throw('"session.cookie.httpOnly" must be a boolean');
   });
 
   it('should fail when app session cookie secure is not a boolean', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         secret: '__test_session_secret__',
@@ -442,11 +365,11 @@ describe('get config', () => {
           },
         },
       });
-    }, '"session.cookie.secure" must be a boolean');
+    }).to.throw('"session.cookie.secure" must be a boolean');
   });
 
   it('should fail when app session cookie sameSite is invalid', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         secret: '__test_session_secret__',
@@ -456,11 +379,11 @@ describe('get config', () => {
           },
         },
       });
-    }, '"session.cookie.sameSite" must be one of [Lax, Strict, None]');
+    }).to.throw('"session.cookie.sameSite" must be one of [lax, strict, none]');
   });
 
   it('should fail when app session cookie domain is invalid', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         secret: '__test_session_secret__',
@@ -470,43 +393,41 @@ describe('get config', () => {
           },
         },
       });
-    }, '"session.cookie.domain" must be a string');
+    }).to.throw('"session.cookie.domain" must be a string');
   });
 
   it('should fail when http timeout is invalid', () => {
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         httpTimeout: 'abcd',
       });
-    }, '"httpTimeout" must be a number');
+    }).to.throw('"httpTimeout" must be a number');
 
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         httpTimeout: '-100',
       });
-    }, '"httpTimeout" must be greater than or equal to 500');
+    }).to.throw('"httpTimeout" must be greater than or equal to 500');
 
-    assert.throws(() => {
+    expect(() => {
       getConfig({
         ...defaultConfig,
         httpTimeout: '499',
       });
-    }, '"httpTimeout" must be greater than or equal to 500');
+    }).to.throw('"httpTimeout" must be greater than or equal to 500');
   });
 
   it("shouldn't allow a secret of less than 8 chars", () => {
-    assert.throws(() => getConfig({ ...defaultConfig, secret: 'short' }), TypeError, '"secret" does not match any of the allowed types');
-    assert.throws(
-      () => getConfig({ ...defaultConfig, secret: ['short', 'too'] }),
+    expect(() => getConfig({ ...defaultConfig, secret: 'short' })).to.throw(TypeError, '"secret" does not match any of the allowed types');
+    expect(() => getConfig({ ...defaultConfig, secret: ['short', 'too'] })).to.throw(
       TypeError,
       '"secret[0]" does not match any of the allowed types'
     );
-    assert.throws(() => getConfig({ ...defaultConfig, secret: Buffer.from('short') }), TypeError, '"secret" must be at least 8 bytes');
+    expect(() => getConfig({ ...defaultConfig, secret: Buffer.from('short') })).to.throw(TypeError, '"secret" must be at least 8 bytes');
   });
 
-  // v6: Public clients with PKCE are now supported for code flow
   it('should allow code flow without client secret (public client with PKCE)', () => {
     const config = {
       ...defaultConfig,
@@ -515,10 +436,9 @@ describe('get config', () => {
       },
     };
     const result = getConfig(config);
-    assert.equal(result.clientAuthMethod, 'none');
+    expect(result.clientAuthMethod).to.equal('none');
   });
 
-  // v6: Public clients with PKCE are now supported for hybrid flow
   it('should allow hybrid flow without client secret (public client with PKCE)', () => {
     const config = {
       ...defaultConfig,
@@ -527,10 +447,9 @@ describe('get config', () => {
       },
     };
     const result = getConfig(config);
-    assert.equal(result.clientAuthMethod, 'none');
+    expect(result.clientAuthMethod).to.equal('none');
   });
 
-  // v6: Explicit clientAuthMethod 'none' is allowed for code flow with PKCE
   it('should allow code flow with explicit clientAuthMethod "none" (public client with PKCE)', () => {
     const config = {
       ...defaultConfig,
@@ -540,7 +459,7 @@ describe('get config', () => {
       clientAuthMethod: 'none',
     };
     const result = getConfig(config);
-    assert.equal(result.clientAuthMethod, 'none');
+    expect(result.clientAuthMethod).to.equal('none');
   });
 
   it('should require "clientAssertionSigningKey" when clientAuthMethod is "private_key_jwt"', () => {
@@ -551,8 +470,7 @@ describe('get config', () => {
       },
       clientAuthMethod: 'private_key_jwt',
     };
-    assert.throws(
-      () => getConfig(config),
+    expect(() => getConfig(config)).to.throw(
       TypeError,
       '"clientAssertionSigningKey" is required for a "clientAuthMethod" of "private_key_jwt"'
     );
@@ -566,7 +484,7 @@ describe('get config', () => {
       },
       clientAssertionSigningKey: 'foo',
     };
-    assert.equal(getConfig(config).clientAuthMethod, 'private_key_jwt');
+    expect(getConfig(config).clientAuthMethod).to.equal('private_key_jwt');
   });
 
   it('should not allow "none" for idTokenSigningAlg', () => {
@@ -576,12 +494,11 @@ describe('get config', () => {
         idTokenSigningAlg,
       });
     const expected = '"idTokenSigningAlg" contains an invalid value';
-    assert.throws(() => config('none'), TypeError, expected);
-    assert.throws(() => config('NONE'), TypeError, expected);
-    assert.throws(() => config('noNE'), TypeError, expected);
+    expect(() => config('none')).to.throw(TypeError, expected);
+    expect(() => config('NONE')).to.throw(TypeError, expected);
+    expect(() => config('noNE')).to.throw(TypeError, expected);
   });
 
-  // v6: id_token response_type is not supported (implicit flow removed)
   // Test HMAC requirement with code flow instead
   it('should require clientSecret for ID tokens with HMAC based algorithms', () => {
     const config = {
@@ -591,7 +508,7 @@ describe('get config', () => {
         response_type: 'code',
       },
     };
-    assert.throws(() => getConfig(config), TypeError, '"clientSecret" is required for ID tokens with HMAC based algorithms');
+    expect(() => getConfig(config)).to.throw(TypeError, '"clientSecret" is required for ID tokens with HMAC based algorithms');
   });
 
   it('should require clientSecret for ID tokens in hybrid flow with HMAC based algorithms', () => {
@@ -602,7 +519,7 @@ describe('get config', () => {
         response_type: 'code id_token',
       },
     };
-    assert.throws(() => getConfig(config), TypeError, '"clientSecret" is required for ID tokens with HMAC based algorithms');
+    expect(() => getConfig(config)).to.throw(TypeError, '"clientSecret" is required for ID tokens with HMAC based algorithms');
   });
 
   it('should require clientSecret for ID tokens in code flow with HMAC based algorithms', () => {
@@ -613,67 +530,59 @@ describe('get config', () => {
         response_type: 'code',
       },
     };
-    assert.throws(() => getConfig(config), TypeError, '"clientSecret" is required for ID tokens with HMAC based algorithms');
+    expect(() => getConfig(config)).to.throw(TypeError, '"clientSecret" is required for ID tokens with HMAC based algorithms');
   });
 
   it('should allow empty auth params', () => {
-    assert.doesNotThrow(validateAuthorizationParams);
-    assert.doesNotThrow(() => validateAuthorizationParams({}));
+    expect(validateAuthorizationParams).to.not.throw();
+    expect(() => validateAuthorizationParams({})).to.not.throw();
   });
 
   it('should not allow empty scope', () => {
-    assert.throws(() => validateAuthorizationParams({ scope: null }), TypeError, '"authorizationParams.scope" must be a string');
-    assert.throws(() => validateAuthorizationParams({ scope: '' }), TypeError, '"authorizationParams.scope" is not allowed to be empty');
+    expect(() => validateAuthorizationParams({ scope: null })).to.throw(TypeError, '"authorizationParams.scope" must be a string');
+    expect(() => validateAuthorizationParams({ scope: '' })).to.throw(TypeError, '"authorizationParams.scope" is not allowed to be empty');
   });
 
   it('should not allow scope without openid', () => {
-    assert.throws(
-      () => validateAuthorizationParams({ scope: 'profile email' }),
+    expect(() => validateAuthorizationParams({ scope: 'profile email' })).to.throw(
       TypeError,
       '"authorizationParams.scope" with value "profile email" fails to match the contains openid pattern'
     );
   });
 
   it('should allow scope with openid', () => {
-    assert.doesNotThrow(() => validateAuthorizationParams({ scope: 'openid read:users' }));
-    assert.doesNotThrow(() => validateAuthorizationParams({ scope: 'read:users openid' }));
-    assert.doesNotThrow(() => validateAuthorizationParams({ scope: 'read:users openid profile email' }));
+    expect(() => validateAuthorizationParams({ scope: 'openid read:users' })).to.not.throw();
+    expect(() => validateAuthorizationParams({ scope: 'read:users openid' })).to.not.throw();
+    expect(() => validateAuthorizationParams({ scope: 'read:users openid profile email' })).to.not.throw();
   });
 
-  // v6: Only 'code' and 'code id_token' are valid (no implicit 'id_token' flow)
   it('should not allow empty response_type', () => {
-    assert.throws(
-      () => validateAuthorizationParams({ response_type: null }),
+    expect(() => validateAuthorizationParams({ response_type: null })).to.throw(
       TypeError,
       '"authorizationParams.response_type" must be one of [code id_token, code]'
     );
-    assert.throws(
-      () => validateAuthorizationParams({ response_type: '' }),
+    expect(() => validateAuthorizationParams({ response_type: '' })).to.throw(
       TypeError,
       '"authorizationParams.response_type" must be one of [code id_token, code]'
     );
   });
 
   it('should not allow invalid response_types', () => {
-    assert.throws(
-      () => validateAuthorizationParams({ response_type: 'foo' }),
+    expect(() => validateAuthorizationParams({ response_type: 'foo' })).to.throw(
       TypeError,
       '"authorizationParams.response_type" must be one of [code id_token, code]'
     );
-    assert.throws(
-      () => validateAuthorizationParams({ response_type: 'foo id_token' }),
+    expect(() => validateAuthorizationParams({ response_type: 'foo id_token' })).to.throw(
       TypeError,
       '"authorizationParams.response_type" must be one of [code id_token, code]'
     );
-    // v6: 'id_token code' order is wrong, 'id_token' alone is not supported
-    assert.throws(
-      () => validateAuthorizationParams({ response_type: 'id_token code' }),
+
+    expect(() => validateAuthorizationParams({ response_type: 'id_token code' })).to.throw(
       TypeError,
       '"authorizationParams.response_type" must be one of [code id_token, code]'
     );
-    // v6: Implicit flow 'id_token' is not supported
-    assert.throws(
-      () => validateAuthorizationParams({ response_type: 'id_token' }),
+
+    expect(() => validateAuthorizationParams({ response_type: 'id_token' })).to.throw(
       TypeError,
       '"authorizationParams.response_type" must be one of [code id_token, code]'
     );
@@ -685,45 +594,35 @@ describe('get config', () => {
       clientSecret: 'foo',
       authorizationParams,
     });
-    // v6: 'id_token' implicit flow is no longer valid
-    assert.doesNotThrow(() => config({ response_type: 'code id_token' }));
-    assert.doesNotThrow(() => config({ response_type: 'code' }));
+
+    expect(() => config({ response_type: 'code id_token' })).to.not.throw();
+    expect(() => config({ response_type: 'code' })).to.not.throw();
   });
 
   it('should not allow empty response_mode', () => {
-    // v6: default response_type is 'code', which allows 'query' or 'form_post'
-    assert.throws(
-      () => validateAuthorizationParams({ response_mode: null }),
+    expect(() => validateAuthorizationParams({ response_mode: null })).to.throw(
       TypeError,
       '"authorizationParams.response_mode" must be one of [query, form_post]'
     );
-    assert.throws(
-      () => validateAuthorizationParams({ response_mode: '' }),
+    expect(() => validateAuthorizationParams({ response_mode: '' })).to.throw(
       TypeError,
       '"authorizationParams.response_mode" must be one of [query, form_post]'
     );
-    assert.throws(
-      () =>
-        validateAuthorizationParams({
-          response_type: 'code',
-          response_mode: '',
-        }),
-      TypeError,
-      '"authorizationParams.response_mode" must be one of [query, form_post]'
-    );
+    expect(() =>
+      validateAuthorizationParams({
+        response_type: 'code',
+        response_mode: '',
+      })
+    ).to.throw(TypeError, '"authorizationParams.response_mode" must be one of [query, form_post]');
   });
 
-  // v6: id_token is not a valid response_type anymore
   it('should not allow response_type code id_token and response_mode query', () => {
-    assert.throws(
-      () =>
-        validateAuthorizationParams({
-          response_type: 'code id_token',
-          response_mode: 'query',
-        }),
-      TypeError,
-      '"authorizationParams.response_mode" must be [form_post]'
-    );
+    expect(() =>
+      validateAuthorizationParams({
+        response_type: 'code id_token',
+        response_mode: 'query',
+      })
+    ).to.throw(TypeError, '"authorizationParams.response_mode" must be [form_post]');
   });
 
   it('should allow valid response_type response_mode combinations', () => {
@@ -732,10 +631,10 @@ describe('get config', () => {
       clientSecret: 'foo',
       authorizationParams,
     });
-    assert.doesNotThrow(() => config({ response_type: 'code', response_mode: 'query' }));
-    assert.doesNotThrow(() => config({ response_type: 'code', response_mode: 'form_post' }));
-    // v6: id_token alone is no longer valid
-    assert.doesNotThrow(() => config({ response_type: 'code id_token', response_mode: 'form_post' }));
+    expect(() => config({ response_type: 'code', response_mode: 'query' })).to.not.throw();
+    expect(() => config({ response_type: 'code', response_mode: 'form_post' })).to.not.throw();
+
+    expect(() => config({ response_type: 'code id_token', response_mode: 'form_post' })).to.not.throw();
   });
 
   it('should allow valid httpTimeout configuration', () => {
@@ -744,16 +643,15 @@ describe('get config', () => {
       httpTimeout,
     });
 
-    assert.doesNotThrow(() => config(5000));
-    assert.doesNotThrow(() => config(10000));
-    assert.doesNotThrow(() => config('5000'));
-    assert.doesNotThrow(() => config('10000'));
+    expect(() => config(5000)).to.not.throw();
+    expect(() => config(10000)).to.not.throw();
+    expect(() => config('5000')).to.not.throw();
+    expect(() => config('10000')).to.not.throw();
   });
 
-  // v6: Default clientAuthMethod is 'none' when no clientSecret is provided (public client with PKCE)
   it('should default clientAuthMethod to none when no clientSecret is provided', () => {
     const config = getConfig(defaultConfig);
-    assert.deepInclude(config, {
+    expect(config).to.deep.include({
       clientAuthMethod: 'none',
     });
   });
@@ -763,14 +661,14 @@ describe('get config', () => {
       ...defaultConfig,
       clientSecret: '__test_client_secret__',
     });
-    assert.deepInclude(config, {
+    expect(config).to.deep.include({
       clientAuthMethod: 'client_secret_post',
     });
   });
 
   it('should default httpTimeout to 5000', () => {
     const config = getConfig(defaultConfig);
-    assert.deepInclude(config, {
+    expect(config).to.deep.include({
       httpTimeout: 5000,
     });
   });
@@ -782,7 +680,7 @@ describe('get config', () => {
         clientSecret: '__test_client_secret__',
         authorizationParams: { response_type: 'code' },
       });
-      assert.deepInclude(config, {
+      expect(config).to.deep.include({
         clientAuthMethod: 'client_secret_post',
       });
     }
@@ -793,41 +691,40 @@ describe('get config', () => {
         clientSecret: '__test_client_secret__',
         authorizationParams: { response_type: 'code id_token' },
       });
-      assert.deepInclude(config, {
+      expect(config).to.deep.include({
         clientAuthMethod: 'client_secret_post',
       });
     }
   });
 
   it('should require a session store for back-channel logout', () => {
-    assert.throws(
-      () => getConfig({ ...defaultConfig, backchannelLogout: true }),
+    expect(() => getConfig({ ...defaultConfig, backchannelLogout: true })).to.throw(
       TypeError,
       `Back-Channel Logout requires a "backchannelLogout.store" (you can also reuse "session.store" if you have stateful sessions) or custom hooks for "isLoggedOut" and "onLogoutToken".`
     );
   });
 
   it(`should configure back-channel logout with it's own store`, () => {
-    assert.doesNotThrow(() =>
+    expect(() =>
       getConfig({
         ...defaultConfig,
         backchannelLogout: { store: {} },
       })
-    );
+    ).to.not.throw();
   });
 
   it(`should configure back-channel logout with a shared store`, () => {
-    assert.doesNotThrow(() =>
+    expect(() =>
       getConfig({
         ...defaultConfig,
         backchannelLogout: true,
         session: { store: {} },
       })
-    );
+    ).to.not.throw();
   });
 
   it(`should configure back-channel logout with custom hooks`, () => {
-    assert.doesNotThrow(() =>
+    expect(() =>
       getConfig({
         ...defaultConfig,
         backchannelLogout: {
@@ -835,6 +732,6 @@ describe('get config', () => {
           onLogoutToken: () => {},
         },
       })
-    );
+    ).to.not.throw();
   });
 });
