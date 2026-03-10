@@ -26,7 +26,6 @@
   "files": [
     "src",
     "lib",
-    "middleware",
     "types/index.d.ts",
     "types/index.d.ts.map"
   ],
