@@ -1,6 +1,6 @@
 {
   "name": "@aller/openid-connect",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Express middleware to protect web applications using OpenID Connect.",
   "type": "module",
   "main": "./lib/index.cjs",
