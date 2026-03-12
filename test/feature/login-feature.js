@@ -7,6 +7,7 @@ import request from 'supertest';
 
 import { makeIdToken } from '../fixture/cert.js';
 import { createApp } from '../fixture/server.js';
+import { decryptCookie } from '../helpers/crypto-helper.js';
 import { CustomStore } from '../helpers/custom-store.js';
 import { setupDiscovery } from '../helpers/openid-helper.js';
 
@@ -78,25 +79,40 @@ Feature('login', () => {
 
     Then('user is redirected to return url', () => {
       expect(response.statusCode, response.text).to.equal(302);
-
       expect(response.get('location')).to.equal('/protected');
     });
 
     let cookies;
+    let appSessionCookie;
     And('authentication session cookie is set', () => {
       cookies = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
-      expect(cookies.find((c) => c.name === 'appSession')).to.deep.include({
+      appSessionCookie = cookies.find((c) => c.name === 'appSession');
+      expect(appSessionCookie).to.deep.include({
         noscript: true,
       });
     });
 
-    And('authentication attempt cookie is removed', () => {
+    And('session cookie is encrypted', async () => {
+      const session = await decryptCookie('__test_session_secret__', appSessionCookie.value);
+      expect(JSON.parse(session.plaintext)).to.have.property('sub', userSub);
+    });
+
+    And('authentication transaction cookie is removed', () => {
       expect(cookies.find((c) => c.name === 'auth_verification')).to.not.be.ok;
     });
 
     And('session has first user id', async () => {
       response = await agent.get('/session').expect(200);
       expect(decodeJwt(response.body.id_token)).to.have.property('sub', userSub);
+    });
+
+    When('following redirect', async () => {
+      response = await agent.get('/protected').expect(200);
+    });
+
+    Then('session cookie is regenerated', () => {
+      expect(response.get('set-cookie')).to.have.length(1);
+      expect(response.get('set-cookie').toString()).to.include('appSession=');
     });
   });
 

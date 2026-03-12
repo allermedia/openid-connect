@@ -255,7 +255,7 @@ Feature('Backchannel logout', () => {
           secret: '__test_session_secret__',
           clientID: '__test_client_id__',
           baseURL: 'http://example.local',
-          issuerBaseURL: 'https://openid.local',
+          issuerBaseURL: 'https://broken.openid.local',
           authRequired: false,
           session: { store: new CustomStore() },
           discoveryCacheMaxAge: 24 * 3600 * 1000,
@@ -273,14 +273,14 @@ Feature('Backchannel logout', () => {
         .set('content-type', 'application/x-www-form-urlencoded')
         .send(
           new URLSearchParams({
-            logout_token: await makeProperLogoutToken(),
+            logout_token: await makeProperLogoutToken({ payload: { iss: 'https://broken.openid.local', sid: randomUUID() } }),
           }).toString()
         );
     });
 
     Then('bad request is returned', () => {
-      expect(response.statusCode, response.text).to.equal(500);
-      expect(response.body).to.have.property('error', 'server_error');
+      expect(response.statusCode, response.text).to.equal(400);
+      expect(response.body).to.have.property('error', 'invalid_token');
     });
   });
 });

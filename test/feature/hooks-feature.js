@@ -4,10 +4,10 @@ import { auth, requiresAuth } from '@aller/openid-connect';
 import nock from 'nock';
 import request from 'supertest';
 
-import { makeIdToken } from '../fixture/cert.js';
+import { makeIdToken, makeProperLogoutToken } from '../fixture/cert.js';
 import { createApp } from '../fixture/server.js';
 import { CustomStore } from '../helpers/custom-store.js';
-import { setupDiscovery } from '../helpers/openid-helper.js';
+import { setupDiscovery, setupJwks } from '../helpers/openid-helper.js';
 
 [undefined, new CustomStore()].forEach((store) => {
   Feature(`hooks with ${store ? 'custom' : 'cookie'} session store`, () => {
@@ -194,6 +194,57 @@ import { setupDiscovery } from '../helpers/openid-helper.js';
         response = await agent.get('/session').expect(200);
         expect(response.body).to.be.empty;
       });
+    });
+  });
+});
+
+Feature('backchannel logout hooks', () => {
+  before(() => {
+    setupDiscovery('https://openid.local');
+    setupJwks('https://openid.local');
+  });
+
+  Scenario('backchannel onLogoutToken hook', () => {
+    /** @type {import('express').Application} */
+    let app;
+    Given('openid is configured on app', () => {
+      setupDiscovery('https://broken.openid.local', { jwks_uri: null });
+
+      app = createApp(
+        auth({
+          secret: '__test_session_secret__',
+          clientID: '__test_client_id__',
+          baseURL: 'http://example.local',
+          issuerBaseURL: 'https://openid.local',
+          authRequired: false,
+          session: { store: new CustomStore() },
+          discoveryCacheMaxAge: 24 * 3600 * 1000,
+          backchannelLogout: {
+            onLogoutToken() {
+              return Promise.reject(new Error('foo'));
+            },
+          },
+        }),
+        requiresAuth()
+      );
+    });
+
+    /** @type {import('express').Response} */
+    let response;
+    When('openid server calls backchannel logout without required events', async () => {
+      response = await request(app)
+        .post('/backchannel-logout')
+        .set('content-type', 'application/x-www-form-urlencoded')
+        .send(
+          new URLSearchParams({
+            logout_token: await makeProperLogoutToken({ payload: { iss: 'https://openid.local', sid: randomUUID() } }),
+          }).toString()
+        );
+    });
+
+    Then('bad request is returned', () => {
+      expect(response.statusCode, response.text).to.equal(400);
+      expect(response.body).to.have.property('error', 'application_error');
     });
   });
 });

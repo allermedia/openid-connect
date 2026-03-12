@@ -88,7 +88,17 @@ Feature('Refresh', () => {
       expect(response.get('location')).to.equal('/protected');
     });
 
-    And('session has access token', async () => {
+    let cookies;
+    let appSessionCookie;
+    And('authentication session cookie is set', () => {
+      cookies = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+      appSessionCookie = cookies.find((c) => c.name === 'appSession');
+      expect(appSessionCookie).to.deep.include({
+        noscript: true,
+      });
+    });
+
+    And('session cookie has access token', async () => {
       response = await agent.get('/session').expect(200);
       expect(response.body).to.deep.include({ access_token: accessToken });
     });
@@ -122,6 +132,15 @@ Feature('Refresh', () => {
     Then('user is redirected back to return to', () => {
       expect(response.statusCode, response.text).to.equal(307);
       expect(response.get('location')).to.equal('/protected');
+    });
+
+    And('authentication session cookie is refreshed', () => {
+      expect(response.get('set-cookie')).to.have.length(1);
+      cookies = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+      appSessionCookie = cookies.find((c) => c.name === 'appSession');
+      expect(appSessionCookie).to.deep.include({
+        noscript: true,
+      });
     });
 
     And('session has new access token', async () => {

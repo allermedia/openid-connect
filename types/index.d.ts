@@ -37,62 +37,6 @@ declare module '@aller/openid-connect' {
 	export function claimCheck(func: CallableFunction): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
 
 	function defaultRequiresLogin(req: import("express").Request): boolean;
-	export class DefaultCookieStore {
-		
-		constructor(config: ConfigParams);
-		config: ConfigParams;
-		sessionName: string;
-		cookieConfig: CookieConfigParams;
-		/**
-		 * Cookie chunk size
-		 * */
-		cookieChunkSize: number;
-		get encryptionKeys(): [Buffer<ArrayBufferLike>, Buffer<ArrayBufferLike>[]];
-		get signingKeys(): [Buffer<ArrayBufferLike>, Buffer<ArrayBufferLike>[]];
-		get encryptKey(): Buffer<ArrayBufferLike>;
-		get decryptKeys(): Buffer<ArrayBufferLike>[];
-		get signingKey(): Buffer<ArrayBufferLike>;
-		get verifyKeys(): Buffer<ArrayBufferLike>[];
-		
-		get(idOrVal: string): Promise<{
-			header: any;
-			data: any;
-		}>;
-		/**
-		 * Store session from request
-		 * */
-		set(_req: import("express").Request, _options: object): Promise<void>;
-		/**
-		 * Get session cookie from request
-		 * @returns session cookie value, if any
-		 */
-		getCookie(req: import("express").Request): any;
-		
-		clearCookie(name: string, res: import("express").Response): void;
-		
-		setCookie(req: import("express").Request, res: import("express").Response, { uat, iat, exp }: {
-			uat?: number;
-			iat?: number;
-			exp?: number;
-		}): void;
-		
-		calculateExp(iat: number, uat: number): number;
-		#private;
-	}
-	export class CustomCookieStore extends DefaultCookieStore {
-		store: SessionStore<Session>;
-		
-		get(id: string): Promise<SessionStorePayload<Session>>;
-		/**
-		 * Store session from request
-		 * 
-		 */
-		set(req: import("express").Request, { uat, iat, exp }: {
-			uat?: number;
-			iat?: number;
-			exp?: number;
-		}): Promise<void>;
-	}
   /**
    * Authorization parameters for the OIDC authorization request.
    * These parameters are passed to the authorization endpoint.

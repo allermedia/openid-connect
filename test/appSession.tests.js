@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { mock } from 'node:test';
 
+import { CompactEncrypt } from 'jose';
 import request from 'supertest';
 
 import { getConfig } from '../src/config.js';
@@ -8,7 +9,6 @@ import appSession from '../src/middleware/appSession.js';
 
 import { makeIdToken } from './fixture/cert.js';
 import { createApp } from './fixture/server.js';
-import { encrypted } from './fixture/sessionEncryption.js';
 
 const defaultConfig = {
   clientID: '__test_client_id__',
@@ -33,6 +33,22 @@ async function login(agent, claims) {
 const HR_MS = 60 * 60 * 1000;
 
 describe('appSession', () => {
+  let encrypted;
+  before(async () => {
+    const key = Buffer.from(crypto.hkdfSync('sha256', defaultConfig.secret, Buffer.alloc(0), 'JWE CEK', 32));
+    const epochnow = Math.floor(Date.now() / 1000);
+
+    encrypted = await new CompactEncrypt(Buffer.from(JSON.stringify({ sub: '__test_sub__' })))
+      .setProtectedHeader({
+        alg: 'dir',
+        enc: 'A256GCM',
+        uat: epochnow,
+        iat: epochnow,
+        exp: epochnow + 7 * 24 * 60 * 60,
+      })
+      .encrypt(key);
+  });
+
   afterEach(() => {
     mock.timers.reset();
   });

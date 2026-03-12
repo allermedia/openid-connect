@@ -1,5 +1,4 @@
-import { DefaultCookieStore, CustomCookieStore } from '@aller/openid-connect';
-
+import { DefaultCookieStore, CustomCookieStore } from '../../src/cookie-store.js';
 import { CustomStore } from '../helpers/custom-store.js';
 
 describe('cookie store', () => {

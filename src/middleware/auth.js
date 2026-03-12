@@ -115,6 +115,7 @@ function backchannelIsLoggedOutMiddleware(config, router) {
     }
 
     const loggedOut = await isLoggedOutFn(req, config);
+
     if (loggedOut) {
       // @ts-ignore
       const session = req[config.session.name];

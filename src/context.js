@@ -8,7 +8,7 @@ import { regenerateSessionStoreId, replaceSession } from '../src/middleware/appS
 
 import { AccessToken } from './access-token.js';
 import { getClient } from './client.js';
-import { SESSION, COOKIES, SKIP_SILENT_LOGIN_COOKIE_NAME } from './constants.js';
+import { SESSION, SESSION_STORE, COOKIES, SKIP_SILENT_LOGIN_COOKIE_NAME } from './constants.js';
 import Debug from './debug.js';
 import { OpenIDConnectBadRequest } from './errors.js';
 import onLogin from './hooks/backchannelLogout/onLogIn.js';
@@ -142,6 +142,11 @@ export class ResponseContext {
     return !!this.#config.backchannelLogout;
   }
 
+  /** @type {ReturnType<import('./cookie-store.js').DefaultCookieStore['api']>} */
+  get cookieApi() {
+    return this.#req[SESSION_STORE];
+  }
+
   /**
    * Backchannel logout configuration
    * @type {import('types').BackchannelLogoutOptions}
@@ -273,7 +278,7 @@ export class ResponseContext {
         authParams.code_challenge = await calculatePKCECodeChallenge(authVerification.code_verifier);
       }
 
-      transient.store(res, config.transactionCookie.name, JSON.stringify(authVerification), {
+      await transient.setTransactionCookie(res, JSON.stringify(authVerification), {
         sameSite: authOptions.authorizationParams.response_mode === 'form_post' ? 'none' : config.transactionCookie.sameSite,
       });
 
@@ -352,7 +357,7 @@ export class ResponseContext {
       const callbackParams = req.method === 'POST' ? req.body : req.query;
 
       // Get auth verification for checks
-      const authVerification = this.#transient.getOnce(config.transactionCookie.name, req, res);
+      const authVerification = await this.#transient.getOnce(config.transactionCookie.name, req, res);
 
       const checks = authVerification ? JSON.parse(authVerification) : {};
       state = decodeState(checks.state);
@@ -416,6 +421,8 @@ export class ResponseContext {
       if (req.oidc.isAuthenticated() && this.hasBackchannelLogout && this.backchannelLogoutOptions.onLogin !== false) {
         await (this.backchannelLogoutOptions.onLogin || onLogin)(req, config);
       }
+
+      await this.cookieApi.setSessionCookie();
     } catch (err) {
       if (!state?.attemptingSilentLogin) {
         this.session = undefined;
@@ -518,7 +525,7 @@ export class ResponseContext {
         });
       }
     } catch (err) {
-      debug('Backchannel logout error: %s', err.message);
+      debug('Backchannel logout error', err);
       res.status(500).json({
         error: 'server_error',
         error_description: 'Internal server error processing logout token',

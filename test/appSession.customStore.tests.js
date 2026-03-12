@@ -51,7 +51,7 @@ describe('appSession custom store', () => {
   let signedCookieValue;
   let middlewareConfig;
 
-  function setup(config) {
+  async function setup(config) {
     middlewareConfig = getConfig({
       ...defaultConfig,
       ...config,
@@ -63,26 +63,19 @@ describe('appSession custom store', () => {
     });
 
     const [key] = getSigningKeyStore(middlewareConfig.secret);
-    signedCookieValue = signCookie('appSession', 'foo', key);
+    signedCookieValue = await signCookie('appSession', 'foo', key);
 
     return createApp(appSession(middlewareConfig));
   }
 
-  // afterEach(async () => {
-  //   if (redisClient) {
-  //     await new Promise((resolve) => redisClient.flushall(resolve));
-  //     await new Promise((resolve) => redisClient.quit(resolve));
-  //   }
-  // });
-
   it('should not create a session when there are no cookies', async () => {
-    const server = setup();
+    const server = await setup();
     const res = await request(server).get('/session');
     expect(res.body).to.be.empty;
   });
 
   it('should not error for non existent sessions', async () => {
-    const server = setup();
+    const server = await setup();
     const res = await request(server).get('/session', {
       baseUrl,
       json: true,
@@ -95,18 +88,18 @@ describe('appSession custom store', () => {
   });
 
   it('should not error for non existent signed sessions', async () => {
-    const server = setup();
+    const server = await setup();
     const conf = getConfig(defaultConfig);
     const [key] = getSigningKeyStore(conf.secret);
     const res = await request(server)
       .get('/session')
-      .set('cookie', 'appSession=' + signCookie('appSession', 'foo', key));
+      .set('cookie', 'appSession=' + (await signCookie('appSession', 'foo', key)));
     expect(res.statusCode, res.text).to.equal(200);
     expect(res.body).to.be.empty;
   });
 
   it('should get an existing session', async () => {
-    const server = setup();
+    const server = await setup();
     await middlewareConfig.session.store.set('foo', sessionData());
 
     const agent = request.agent(server);
@@ -125,7 +118,7 @@ describe('appSession custom store', () => {
 
   it('should set ttl for compatible session stores', async () => {
     const twoDays = 172800;
-    const server = setup({ session: { rolling: false, absoluteDuration: twoDays } });
+    const server = await setup({ session: { rolling: false, absoluteDuration: twoDays } });
     await middlewareConfig.session.store.set('foo', sessionData());
 
     const agent = request.agent(server);
@@ -140,13 +133,13 @@ describe('appSession custom store', () => {
   });
 
   it('should not populate the store when there is no session', async () => {
-    const server = setup();
+    const server = await setup();
     await request(server).get('/session');
     expect(await middlewareConfig.session.store.dbSize()).to.equal(0);
   });
 
   it('should get a new session', async () => {
-    const server = setup();
+    const server = await setup();
 
     const agent = request.agent(server);
 
@@ -159,7 +152,7 @@ describe('appSession custom store', () => {
   });
 
   it('should destroy an existing session', async () => {
-    const server = setup({ idpLogout: false });
+    const server = await setup({ idpLogout: false });
     await middlewareConfig.session.store.set('foo', sessionData());
 
     const agent = request.agent(server);
@@ -176,7 +169,7 @@ describe('appSession custom store', () => {
 
   it('uses custom session id generator when provided', async () => {
     const immId = 'apple';
-    const server = setup({
+    const server = await setup({
       session: { genid: () => Promise.resolve(immId) },
     });
 
@@ -238,7 +231,7 @@ describe('appSession custom store', () => {
     app.use(appSession(conf));
 
     const [key] = getSigningKeyStore(conf.secret);
-    const cookieValue = signCookie('appSession', 'foo', key);
+    const cookieValue = await signCookie('appSession', 'foo', key);
 
     app.get('/', (req, res, next) => {
       res.json(req[SESSION]?.getSessionData());
@@ -256,7 +249,7 @@ describe('appSession custom store', () => {
   });
 
   it('should not sign the session cookie if signSessionStoreCookie is false', async () => {
-    const server = setup({ session: { signSessionStoreCookie: false } });
+    const server = await setup({ session: { signSessionStoreCookie: false } });
     await middlewareConfig.session.store.set('foo', sessionData());
 
     const agent = request.agent(server);
@@ -272,7 +265,7 @@ describe('appSession custom store', () => {
   });
 
   it('should allow migration by signing the session cookie but not requiring it to be signed', async () => {
-    const server = setup({
+    const server = await setup({
       session: {
         signSessionStoreCookie: true,
         requireSignedSessionStoreCookie: false,
@@ -294,7 +287,7 @@ describe('appSession custom store', () => {
   });
 
   it('should allow signed session cookies when not requiring it to be signed', async () => {
-    const server = setup({
+    const server = await setup({
       session: {
         signSessionStoreCookie: true,
         requireSignedSessionStoreCookie: false,

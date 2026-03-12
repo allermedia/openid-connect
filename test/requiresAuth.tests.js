@@ -1,6 +1,5 @@
 import { auth, requiresAuth, claimEquals, claimIncludes, claimCheck } from '@aller/openid-connect';
 import nock from 'nock';
-import sinon from 'sinon';
 import request from 'supertest';
 
 import { makeIdToken } from './fixture/cert.js';
@@ -333,20 +332,23 @@ describe('requiresAuth', () => {
   });
 
   it('should not allow anonymous users to check custom claims', async () => {
-    const checkSpy = sinon.spy();
+    let claimChecksCounter = 0;
+
     const server = createApp(
       auth({
         ...defaultConfig,
         authRequired: false,
         errorOnRequiredAuth: true,
       }),
-      claimCheck(checkSpy)
+      claimCheck(() => {
+        claimChecksCounter++;
+      })
     );
     const agent = request.agent(server);
 
     const response = await agent.get('/protected');
 
     expect(response.statusCode, response.text).to.equal(401);
-    sinon.assert.notCalled(checkSpy);
+    expect(claimChecksCounter).to.equal(0);
   });
 });

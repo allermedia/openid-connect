@@ -1,37 +1,40 @@
 import { COOKIES } from './constants.js';
-import { signCookie, verifyCookie, getEncryptionKeyStore } from './crypto.js';
+import { signCookie, verifyCookie, getSigningKeyStore } from './crypto.js';
 
 /**
  * Transaction cookie handler to handle cookies between login and callback
  */
 export class TransientCookieHandler {
+  #config;
   /**
    * @param {Partial<import('types').ConfigParams>} config
    */
   constructor(config) {
-    const [current, keystore] = getEncryptionKeyStore(config.secret);
-    this.currentKey = current;
-    this.keyStore = keystore;
+    this.#config = config;
+    const [current, keystore] = getSigningKeyStore(config.secret);
+    this.currentSigningKey = current;
+    this.signingKeyStore = keystore;
     /** @type {Partial<import('types').CookieConfigParams>} */
     this.sessionCookieConfig = config.session?.cookie || {};
     this.legacySameSiteCookie = config.legacySameSiteCookie;
   }
 
   /**
-   * Set a cookie with a value or a generated nonce.
+   * Set transaction cookie with a value or a generated nonce.
    *
-   * @param {string} cookieName Cookie name to use.
    * @param {import('express').Response} res Express Response object.
    * @param {string} value Cookie value
    * @param {Object} opts Cookie options
    * @param {"lax"|"none"|"strict"|boolean} [opts.sameSite] SameSite attribute of "none," "lax," or "strict". Default is "none".
    * @param {Boolean} [opts.legacySameSiteCookie] Should a fallback cookie be set? Default is true.
    *
-   * @return {string} Cookie value that was set.
+   * @return {Promise<string>} Cookie value that was set.
    */
-  store(res, cookieName, value, opts) {
-    const isSameSiteNone = (opts?.sameSite ?? 'none') === 'none';
+  async setTransactionCookie(res, value, opts) {
+    // @ts-ignore
+    const isSameSiteNone = (opts?.sameSite?.toLowerCase() ?? 'none') === 'none';
     const { domain, path, secure } = this.sessionCookieConfig;
+    const cookieName = this.#config.transactionCookie.name;
     const basicAttr = {
       httpOnly: true,
       secure,
@@ -39,7 +42,7 @@ export class TransientCookieHandler {
       path,
     };
 
-    const cookieValue = signCookie(cookieName, value, this.currentKey);
+    const cookieValue = await signCookie(cookieName, value, this.currentSigningKey);
     // Set the cookie with the SameSite attribute and, if needed, the Secure flag.
     res.cookie(cookieName, cookieValue, {
       ...basicAttr,
@@ -48,7 +51,7 @@ export class TransientCookieHandler {
     });
 
     if (isSameSiteNone && this.legacySameSiteCookie) {
-      const cookieValue = signCookie(`_${cookieName}`, value, this.currentKey);
+      const cookieValue = await signCookie(`_${cookieName}`, value, this.currentSigningKey);
       // Set the fallback cookie with no SameSite or Secure attributes.
       res.cookie(`_${cookieName}`, cookieValue, basicAttr);
     }
@@ -59,26 +62,26 @@ export class TransientCookieHandler {
   /**
    * Get a cookie value then delete it.
    *
-   * @param {string} key Cookie name to use.
+   * @param {string} cookieName Cookie name
    * @param {import('express').Request} req Express Request object.
    * @param {import('express').Response} res Express Response object.
    *
-   * @return {String|undefined} Cookie value or undefined if cookie was not found.
+   * @return {Promise<string|undefined>} Cookie value or undefined if cookie was not found.
    */
-  getOnce(key, req, res) {
+  async getOnce(cookieName, req, res) {
     if (!req[COOKIES]) {
       return undefined;
     }
 
     const { secure, sameSite } = this.sessionCookieConfig;
 
-    let value = verifyCookie(key, req[COOKIES][key], this.keyStore);
-    this.deleteCookie(key, res, { secure, sameSite });
+    let value = await verifyCookie(cookieName, req[COOKIES][cookieName], this.signingKeyStore);
+    this.deleteCookie(cookieName, res, { secure, sameSite });
 
     if (this.legacySameSiteCookie) {
-      const fallbackKey = `_${key}`;
+      const fallbackKey = `_${cookieName}`;
       if (!value) {
-        value = verifyCookie(fallbackKey, req[COOKIES][fallbackKey], this.keyStore);
+        value = await verifyCookie(fallbackKey, req[COOKIES][fallbackKey], this.signingKeyStore);
       }
       this.deleteCookie(fallbackKey, res);
     }

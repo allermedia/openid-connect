@@ -1,5 +1,3 @@
-import sinon from 'sinon';
-
 import { getConfig } from '../src/config.js';
 
 const defaultConfig = {
@@ -14,8 +12,6 @@ function validateAuthorizationParams(authorizationParams) {
 }
 
 describe('get config', () => {
-  afterEach(() => sinon.restore());
-
   it('should get config for default config', () => {
     const config = getConfig(defaultConfig);
     expect(config).to.deep.include({

@@ -3,7 +3,7 @@ import { AssertionError } from 'node:assert';
 import { parse } from 'cookie';
 import onHeaders from 'on-headers';
 
-import { SESSION, COOKIES, SESSION_ID, REGENERATED_SESSION_ID, REASSIGN } from '../constants.js';
+import { SESSION, COOKIES, SESSION_ID, SESSION_STORE, REGENERATED_SESSION_ID, REASSIGN } from '../constants.js';
 import { DefaultCookieStore, CustomCookieStore } from '../cookie-store.js';
 import Debug from '../debug.js';
 import { StoredSession } from '../session.js';
@@ -30,17 +30,21 @@ export default function appSession(config) {
 
     req[COOKIES] = parse(req.get('cookie') || '');
 
-    const session = store.getCookie(req);
+    const sessionCookieValue = store.getCookie(req);
+    let verifiedId;
 
     /** @type {number} */
     let iat;
-    if (session) {
+    if (sessionCookieValue) {
       try {
-        const sessionData = await store.get(session);
+        const sessionData = await store.get(sessionCookieValue);
+
+        verifiedId = sessionData.sessionId;
 
         const storedSession = new StoredSession(sessionData.data, sessionData.header);
         storedSession.assertExpired(rollingDuration, Number(absoluteDuration));
 
+        // @ts-ignore
         iat = sessionData.header.iat;
 
         req[SESSION] = storedSession;
@@ -60,7 +64,11 @@ export default function appSession(config) {
       attachSessionObject(req, sessionName, {});
     }
 
-    req[SESSION_ID] = session || (await generateId(req));
+    req[SESSION_ID] = verifiedId || (await generateId(req));
+
+    const cookieApi = (req[SESSION_STORE] = store.api(req, res, iat));
+
+    await cookieApi.setSessionCookie({ iat });
 
     onHeaders(res, () => {
       try {

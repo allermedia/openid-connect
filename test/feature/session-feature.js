@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
 import { auth, requiresAuth } from '@aller/openid-connect';
+import { compactDecrypt } from 'jose';
 import nock from 'nock';
 import request from 'supertest';
 
+import { getEncryptionKeyStore } from '../../src/crypto.js';
 import { makeIdToken } from '../fixture/cert.js';
 import { createApp } from '../fixture/server.js';
 import { setupDiscovery } from '../helpers/openid-helper.js';
@@ -66,11 +68,16 @@ Feature('session', () => {
     });
 
     let cookies;
+    let appSessionCookie;
     Then('authentication session cookie is set', () => {
       cookies = firstAgent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
-      expect(cookies.find((c) => c.name === 'appSession')).to.deep.include({
-        noscript: true,
-      });
+      appSessionCookie = cookies.find((c) => c.name === 'appSession');
+      expect(appSessionCookie).to.deep.include({ noscript: true });
+    });
+
+    And('session cookie can be decrypted using jose', async () => {
+      const keyStore = getEncryptionKeyStore(['supers3cret', 'oldsupers3cret']);
+      await compactDecrypt(appSessionCookie.value, keyStore[0]);
     });
 
     /** @type {import('express').Application} */
@@ -103,10 +110,9 @@ Feature('session', () => {
 
     And('session cookie has been updated', () => {
       const newCookies = secondAgent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
-
       const oldAppSessionCookie = cookies.find((c) => c.name === 'appSession');
       const newAppSessionCookie = newCookies.find((c) => c.name === 'appSession');
-      expect(oldAppSessionCookie.value === newAppSessionCookie.value).to.be.false;
+      expect(oldAppSessionCookie.value === newAppSessionCookie.value, 'sessions are equal').to.be.false;
     });
 
     /** @type {import('supertest').Agent} */

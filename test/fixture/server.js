@@ -2,7 +2,7 @@ import bodyParser from 'body-parser';
 import express from 'express';
 import { ClientError } from 'openid-client';
 
-import { SESSION } from '../../src/constants.js';
+import { SESSION, SESSION_STORE } from '../../src/constants.js';
 import Debug from '../../src/debug.js';
 import { Session } from '../../src/session.js';
 
@@ -27,7 +27,7 @@ export function createApp(router, protect, path) {
     res.json(req[SESSION]?.getSessionData());
   });
 
-  app.post('/session', (req, res) => {
+  app.post('/session', async (req, res) => {
     Object.keys(req.appSession).forEach((prop) => {
       delete req.appSession[prop];
     });
@@ -38,6 +38,8 @@ export function createApp(router, protect, path) {
     } else {
       req[SESSION] = undefined;
     }
+
+    await req[SESSION_STORE].setSessionCookie();
 
     res.json();
   });

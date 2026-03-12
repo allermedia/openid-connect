@@ -1,6 +1,6 @@
 import { serialize } from 'cookie';
 
-import { COOKIES, SESSION, SESSION_ID, REGENERATED_SESSION_ID, MAX_COOKIE_SIZE } from './constants.js';
+import { COOKIES, SESSION, SET_SESSION_COOKIE, SESSION_ID, REGENERATED_SESSION_ID, MAX_COOKIE_SIZE } from './constants.js';
 import { getEncryptionKeyStore, getSigningKeyStore, verifyCookie, signCookie, encrypt, decrypt } from './crypto.js';
 import Debug from './debug.js';
 
@@ -63,15 +63,17 @@ export class DefaultCookieStore {
   }
 
   /**
-   * @param {string} idOrVal
+   * @param {string} sessionCookieValue
+   * @returns {Promise<import('types').SessionStorePayload<import('types').Session>>}
    */
-  get(idOrVal) {
-    const { payload, header } = decrypt(this.decryptKeys, idOrVal);
+  async get(sessionCookieValue) {
+    const { payload, header } = await decrypt(this.decryptKeys, sessionCookieValue);
 
-    return Promise.resolve({
+    return {
+      sessionId: sessionCookieValue,
       header,
       data: JSON.parse(payload),
-    });
+    };
   }
 
   /**
@@ -129,6 +131,26 @@ export class DefaultCookieStore {
   }
 
   /**
+   * Clear session cookie[s]
+   * @param {import('express').Request} req
+   * @param {import('express').Response} res
+   */
+  clearSessionCookies(req, res) {
+    const sessionName = this.sessionName;
+    const { domain, path, sameSite, secure } = this.cookieConfig;
+    for (const cookieName of Object.keys(req[COOKIES])) {
+      if (cookieName.match(`^${sessionName}(?:\\.\\d)?$`)) {
+        res.clearCookie(cookieName, {
+          domain,
+          path,
+          sameSite,
+          secure,
+        });
+      }
+    }
+  }
+
+  /**
    * @param {import('express').Request} req
    * @param {import('express').Response} res
    * @param {object} options
@@ -137,23 +159,16 @@ export class DefaultCookieStore {
    * @param {number} [options.exp]
    */
   setCookie(req, res, { uat = epoch(), iat = uat, exp = this.calculateExp(iat, uat) }) {
-    const cookies = req[COOKIES];
-
-    const sessionName = this.sessionName;
-
-    /** @type {import('./session.js').Session} */
     const session = req[SESSION];
+    const sessionCookieValue = req[SET_SESSION_COOKIE];
 
-    if (!session) {
+    if (!session || !sessionCookieValue) {
       debug('session was deleted or is empty, clearing all matching session cookies');
-      for (const cookieName of Object.keys(cookies)) {
-        if (cookieName.match(`^${sessionName}(?:\\.\\d)?$`)) {
-          this.clearCookie(cookieName, res);
-        }
-      }
-      return;
+      return this.clearSessionCookies(req, res);
     }
 
+    const cookies = req[COOKIES];
+    const sessionName = this.sessionName;
     const { transient, ...cookieOptions } = this.cookieConfig;
     const options = {
       ...cookieOptions,
@@ -162,32 +177,50 @@ export class DefaultCookieStore {
 
     debug('found session, creating signed session cookie(s) with name %o(.i)', sessionName);
 
-    const value = encrypt(this.encryptKey, JSON.stringify(session.getSessionData() || {}), { iat, uat, exp });
+    const chunkCount = Math.ceil(sessionCookieValue.length / this.cookieChunkSize);
 
-    const chunkCount = Math.ceil(value.length / this.cookieChunkSize);
-
-    if (chunkCount > 1) {
-      debug('cookie size greater than %d, chunking', this.cookieChunkSize);
-      for (let i = 0; i < chunkCount; i++) {
-        const chunkValue = value.slice(i * this.cookieChunkSize, (i + 1) * this.cookieChunkSize);
-
-        const chunkCookieName = `${sessionName}.${i}`;
-        res.cookie(chunkCookieName, chunkValue, options);
-      }
-      if (sessionName in cookies) {
-        debug('replacing non chunked cookie with chunked cookies');
-        this.clearCookie(sessionName, res);
-      }
-    } else {
-      res.cookie(sessionName, value, options);
+    if (chunkCount === 1) {
+      res.cookie(sessionName, sessionCookieValue, options);
       for (const cookieName of Object.keys(cookies)) {
         debug('replacing chunked cookies with non chunked cookies');
         if (cookieName.match(`^${sessionName}\\.\\d$`)) {
           this.clearCookie(cookieName, res);
         }
       }
+      return;
+    }
+
+    debug('cookie size greater than %d, chunking', this.cookieChunkSize);
+    for (let i = 0; i < chunkCount; i++) {
+      const chunkValue = sessionCookieValue.slice(i * this.cookieChunkSize, (i + 1) * this.cookieChunkSize);
+      res.cookie(`${sessionName}.${i}`, chunkValue, options);
+    }
+    if (sessionName in cookies) {
+      debug('replacing non chunked cookie with chunked cookies');
+      this.clearCookie(sessionName, res);
     }
   }
+
+  /**
+   * Regenerate session cookie value
+   * @param {import('express').Request} req
+   * @param {import('express').Response} _res
+   * @param {object} options
+   * @param {number} [options.uat]
+   * @param {number} [options.iat]
+   * @param {number} [options.exp]
+   */
+  async #generateSessionCookie(req, _res, { uat = epoch(), iat = uat, exp = this.calculateExp(iat, uat) }) {
+    /** @type {import('./session.js').Session} */
+    const session = req[SESSION];
+    if (!session) {
+      req[SET_SESSION_COOKIE] = undefined;
+      return;
+    }
+
+    req[SET_SESSION_COOKIE] = await encrypt(this.encryptKey, JSON.stringify(session.getSessionData() || {}), { iat, uat, exp });
+  }
+
   /**
    * @param {number} iat
    * @param {number} uat
@@ -205,6 +238,25 @@ export class DefaultCookieStore {
 
     return Math.min(uat + rollingDuration, iat + duration);
   }
+  /**
+   * @param {import('express').Request} req
+   * @param {import('express').Response} res
+   * @param {number} iat
+   */
+  api(req, res, iat) {
+    const self = this;
+    return {
+      /**
+       * @param {object} [options]
+       * @param {number} [options.uat]
+       * @param {number} [options.iat]
+       * @param {number} [options.exp]
+       */
+      async setSessionCookie(options) {
+        await self.#generateSessionCookie(req, res, { iat, ...options });
+      },
+    };
+  }
 }
 
 export class CustomCookieStore extends DefaultCookieStore {
@@ -219,8 +271,23 @@ export class CustomCookieStore extends DefaultCookieStore {
   /**
    * @param {string} id
    */
-  get(id) {
-    return this.store.get(id);
+  async get(id) {
+    const sessionName = this.sessionName;
+    const { signSessionStoreCookie, requireSignedSessionStoreCookie } = this.config.session;
+
+    let verifiedId = id;
+    if (signSessionStoreCookie) {
+      verifiedId = await verifyCookie(sessionName, id, this.verifyKeys);
+      if (!verifiedId && !requireSignedSessionStoreCookie) {
+        verifiedId = id;
+      }
+    }
+
+    const storedSession = await this.store.get(verifiedId);
+    return {
+      sessionId: verifiedId,
+      ...storedSession,
+    };
   }
 
   /**
@@ -261,45 +328,46 @@ export class CustomCookieStore extends DefaultCookieStore {
    */
   getCookie(req) {
     const sessionName = this.sessionName;
-    if (this.config.session.signSessionStoreCookie) {
-      const verified = verifyCookie(sessionName, req[COOKIES][sessionName], this.verifyKeys);
-      if (this.config.session.requireSignedSessionStoreCookie) {
-        return verified;
-      }
-      return verified || req[COOKIES][sessionName];
-    }
     return req[COOKIES][sessionName];
+  }
+
+  /**
+   * Generate session cookie value
+   * @param {import('express').Request} req
+   */
+  async #generateSessionCookie(req) {
+    /** @type {import('./session.js').Session} */
+    const session = req[SESSION];
+    if (!session) {
+      req[SET_SESSION_COOKIE] = undefined;
+      return;
+    }
+
+    const sessionId = req[SESSION_ID];
+    const sessionName = this.sessionName;
+    const regenSessionId = req[REGENERATED_SESSION_ID];
+    const value = regenSessionId || sessionId; //id;
+    req[SET_SESSION_COOKIE] = this.config.session.signSessionStoreCookie ? await signCookie(sessionName, value, this.signingKey) : value;
   }
 
   /**
    * @param {import('express').Request} req
    * @param {import('express').Response} res
-   * @param {object} options
-   * @param {number} [options.uat]
-   * @param {number} [options.iat]
-   * @param {number} [options.exp]
+   * @param {number} iat
    */
-  setCookie(req, res, { uat = epoch(), iat = uat, exp = this.calculateExp(iat, uat) }) {
-    const sessionName = this.sessionName;
-    const sessionId = req[SESSION_ID];
-
-    if (!req[SESSION]) {
-      if (sessionId) {
-        this.clearCookie(sessionName, res);
-      }
-      return;
-    }
-
-    const regenSessionId = req[REGENERATED_SESSION_ID];
-    const { transient, ...cookieOptions } = this.cookieConfig;
-    let value = regenSessionId || sessionId; //id;
-    if (this.config.session.signSessionStoreCookie) {
-      value = signCookie(sessionName, value, this.signingKey);
-    }
-    res.cookie(sessionName, value, {
-      ...cookieOptions,
-      ...(!transient && { expires: new Date(exp * 1000) }),
-    });
+  api(req, res, iat) {
+    const self = this;
+    return {
+      /**
+       * @param {object} [options]
+       * @param {number} [options.uat]
+       * @param {number} [options.iat]
+       * @param {number} [options.exp]
+       */
+      async setSessionCookie(options) {
+        await self.#generateSessionCookie(req, res, { iat, ...options });
+      },
+    };
   }
 }
 

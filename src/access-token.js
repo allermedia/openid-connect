@@ -1,5 +1,5 @@
 import { getClient } from './client.js';
-import { SESSION } from './constants.js';
+import { SESSION, SESSION_STORE } from './constants.js';
 import { OpenIDConnectBadRequest } from './errors.js';
 import { TokenSetSession } from './session.js';
 
@@ -47,6 +47,11 @@ export class AccessToken {
     return expiresAt ? Math.max(0, Number(expiresAt) - Math.floor(Date.now() / 1000)) : undefined;
   }
 
+  /** @type {ReturnType<import('./cookie-store.js').DefaultCookieStore['api']>} */
+  get #cookieApi() {
+    return this.#req[SESSION_STORE];
+  }
+
   isExpired() {
     const session = this.#session;
     if (!session?.expires_at) return false;
@@ -86,6 +91,8 @@ export class AccessToken {
     }
 
     Object.assign(this.#legacySession, session.getSessionData());
+
+    await this.#cookieApi.setSessionCookie();
 
     // @ts-ignore
     return new this.constructor(config, this.#req);

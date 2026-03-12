@@ -1,10 +1,15 @@
-import { hkdfSync, randomBytes, createCipheriv, createDecipheriv, createHmac, timingSafeEqual } from 'node:crypto';
+import { hkdfSync, timingSafeEqual } from 'node:crypto';
+
+import { FlattenedSign, CompactEncrypt, compactDecrypt } from 'jose';
 
 const BYTE_LENGTH = 32;
 const ENCRYPTION_INFO = 'JWE CEK';
 const SIGNING_INFO = 'JWS Cookie Signing';
 const DIGEST = 'sha256';
-const ENCRYPTION_ALG = 'aes-256-gcm';
+const ALG = 'HS256';
+const CRITICAL_HEADER_PARAMS = ['b64'];
+
+const header = { alg: ALG, b64: false, crit: CRITICAL_HEADER_PARAMS };
 
 /**
  * Get current HKDF encryption keys
@@ -34,11 +39,11 @@ export function getSigningKeyStore(secret) {
  * @param {string} value
  * @param {Buffer[]} keystore
  */
-export function verifyCookie(cookie, value, keystore) {
+export async function verifyCookie(cookie, value, keystore) {
   if (!value) return;
 
   const [part, signature] = value.split('.');
-  if (verifySignature(cookie, part, signature, keystore)) {
+  if (await verifySignature(cookie, part, signature, keystore)) {
     return part;
   }
 }
@@ -46,11 +51,11 @@ export function verifyCookie(cookie, value, keystore) {
 /**
  * Sign cookie
  * @param {string} cookie cookie name
- * @param {string} value cookie valur
+ * @param {string} value cookie value
  * @param {Buffer} key signing key
  */
-export function signCookie(cookie, value, key) {
-  const signature = generateSignature(cookie, value, key);
+export async function signCookie(cookie, value, key) {
+  const signature = await generateSignature(cookie, value, key);
   return `${value}.${signature}`;
 }
 
@@ -60,25 +65,12 @@ export function signCookie(cookie, value, key) {
  * @param {string} payload encrypt payload
  * @param {Record<string, any>} [headers] extra headers
  */
-export function encrypt(key, payload, headers) {
-  const iv = randomBytes(12);
+export async function encrypt(key, payload, headers) {
+  const encrypted = await new CompactEncrypt(Buffer.from(payload))
+    .setProtectedHeader({ alg: 'dir', enc: 'A256GCM', ...headers })
+    .encrypt(key);
 
-  const cipher = createCipheriv(ENCRYPTION_ALG, key, iv);
-
-  let encrypted = cipher.update(payload, 'utf8', 'base64url');
-  encrypted += cipher.final('base64url');
-  const tag = cipher.getAuthTag();
-
-  // Create JWE-like compact format with headers
-  const protectedHeader = Buffer.from(
-    JSON.stringify({
-      alg: 'dir',
-      enc: 'A256GCM',
-      ...headers,
-    })
-  ).toString('base64url');
-
-  return `${protectedHeader}..${iv.toString('base64url')}.${encrypted}.${tag.toString('base64url')}`;
+  return encrypted;
 }
 
 /**
@@ -86,45 +78,22 @@ export function encrypt(key, payload, headers) {
  * @param {Buffer|Buffer[]} keystore
  * @param {string} jweCompact
  */
-export function decrypt(keystore, jweCompact) {
-  const [protectedHeader, , iv, ciphertext, tag] = jweCompact.split('.');
-
+export async function decrypt(keystore, jweCompact) {
   // Try each key in keystore (for key rotation support)
   const keysToTry = Array.isArray(keystore) ? keystore : [keystore];
 
   for (const key of keysToTry) {
     try {
-      return decryptAttempt(key, protectedHeader, iv, ciphertext, tag);
+      const { protectedHeader, plaintext } = await compactDecrypt(jweCompact, key);
+
+      return { header: protectedHeader, payload: new TextDecoder().decode(plaintext) };
     } catch (error) {
       // eslint-disable-next-line no-var
       var lastError = error;
     }
   }
 
-  // If all keys failed, throw the last error
   throw lastError;
-}
-
-/**
- * Attempt to decrypt cipher with key
- * @param {Buffer} key decrypt key
- * @param {string} protectedHeader
- * @param {string} iv
- * @param {string} ciphertext
- * @param {string} tag
- * @returns decrypted value payload and cipher headers
- */
-function decryptAttempt(key, protectedHeader, iv, ciphertext, tag) {
-  const decipher = createDecipheriv(ENCRYPTION_ALG, key, Buffer.from(iv, 'base64url'));
-  decipher.setAuthTag(Buffer.from(tag, 'base64url'));
-
-  let decrypted = decipher.update(ciphertext, 'base64url', 'utf8');
-  decrypted += decipher.final('utf8');
-
-  return {
-    payload: decrypted,
-    header: JSON.parse(Buffer.from(protectedHeader, 'base64url').toString()),
-  };
 }
 
 /**
@@ -132,10 +101,8 @@ function decryptAttempt(key, protectedHeader, iv, ciphertext, tag) {
  * @param {string} value cookie value
  * @param {Buffer} key signature key
  */
-function generateSignature(cookie, value, key) {
-  return createHmac('sha256', key)
-    .update(Buffer.from(`${cookie}=${value}`))
-    .digest('base64url');
+async function generateSignature(cookie, value, key) {
+  return (await new FlattenedSign(Buffer.from(`${cookie}=${value}`)).setProtectedHeader(header).sign(key)).signature;
 }
 
 /**
@@ -145,10 +112,10 @@ function generateSignature(cookie, value, key) {
  * @param {string} signature cookie signature
  * @param {Buffer[]} keystore signature secrets key store
  */
-function verifySignature(cookie, value, signature, keystore) {
+async function verifySignature(cookie, value, signature, keystore) {
   try {
     for (const key of keystore) {
-      const expectedSignature = generateSignature(cookie, value, key);
+      const expectedSignature = await generateSignature(cookie, value, key);
       if (timingSafeEqual(Buffer.from(signature, 'base64url'), Buffer.from(expectedSignature, 'base64url'))) {
         return true;
       }
