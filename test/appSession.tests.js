@@ -458,7 +458,7 @@ describe('appSession', () => {
     while (days--) {
       mock.timers.tick(23 * HR_MS);
       const res = await agent.get('/session');
-      expect(res.body, res.text).to.not.be.empty;
+      expect(res.body, `after ${7 - days} days`).to.not.be.empty;
     }
 
     mock.timers.tick(8 * HR_MS);

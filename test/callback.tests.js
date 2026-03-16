@@ -302,8 +302,6 @@ describe('callback response_mode: form_post', () => {
   });
 
   it('should handle access token expiry', async () => {
-    setupJwks();
-
     const agent = request.agent(
       createApp(
         auth({
@@ -339,20 +337,15 @@ describe('callback response_mode: form_post', () => {
     });
 
     const { body: tokens } = await agent.get('/tokens').expect(200);
-
     expect(tokens.accessToken.expires_in).to.be.approximately(24 * hrSecs, 5);
     mock.timers.tick(4 * hrMs);
-    const tokens2 = await agent
-      .get('/tokens')
-      .expect(200)
-      .then((r) => r.body);
+
+    const { body: tokens2 } = await agent.get('/tokens').expect(200);
     expect(tokens2.accessToken.expires_in).to.be.approximately(20 * hrSecs, 5);
     expect(tokens2.accessTokenExpired).to.be.false;
     mock.timers.tick(21 * hrMs);
-    const tokens3 = await agent
-      .get('/tokens')
-      .expect(200)
-      .then((r) => r.body);
+
+    const { body: tokens3 } = await agent.get('/tokens').expect(200);
     expect(tokens3.accessTokenExpired).to.be.true;
   });
 

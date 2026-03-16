@@ -1,12 +1,8 @@
-import { AssertionError } from 'node:assert';
-
-import { parse } from 'cookie';
 import onHeaders from 'on-headers';
 
-import { SESSION, COOKIES, SESSION_ID, SESSION_STORE, REGENERATED_SESSION_ID, REASSIGN } from '../constants.js';
+import { SESSION, SESSION_STORE } from '../constants.js';
 import { DefaultCookieStore, CustomCookieStore } from '../cookie-store.js';
 import Debug from '../debug.js';
-import { StoredSession } from '../session.js';
 
 const debug = Debug('session');
 
@@ -17,7 +13,6 @@ const debug = Debug('session');
  */
 export default function appSession(config) {
   const sessionName = config.session.name;
-  const { genid: generateId, absoluteDuration, rollingDuration } = config.session;
 
   const hasCustomStore = !!config.session.store;
   const store = hasCustomStore ? new CustomCookieStore(config) : new DefaultCookieStore(config);
@@ -28,58 +23,20 @@ export default function appSession(config) {
       return next(new Error(`req[${sessionName}] is already set, did you run this middleware twice?`));
     }
 
-    req[COOKIES] = parse(req.get('cookie') || '');
+    await store.getSession(req);
 
-    const sessionCookieValue = store.getCookie(req);
-    let verifiedId;
+    attachSessionObject(req, sessionName);
 
-    /** @type {number} */
-    let iat;
-    if (sessionCookieValue) {
-      try {
-        const sessionData = await store.get(sessionCookieValue);
+    const cookieApi = (req[SESSION_STORE] = store.api(req));
 
-        verifiedId = sessionData.sessionId;
-
-        const storedSession = new StoredSession(sessionData.data, sessionData.header);
-        storedSession.assertExpired(rollingDuration, Number(absoluteDuration));
-
-        // @ts-ignore
-        iat = sessionData.header.iat;
-
-        req[SESSION] = storedSession;
-
-        attachSessionObject(req, sessionName, storedSession.getSessionData());
-      } catch (err) {
-        if (err instanceof AssertionError) {
-          debug('existing session was rejected because', err.message);
-        } else {
-          debug('unexpected error handling session', err);
-        }
-      }
-    }
-
-    // @ts-ignore
-    if (!(sessionName in req) || !req[sessionName]) {
-      attachSessionObject(req, sessionName, {});
-    }
-
-    req[SESSION_ID] = verifiedId || (await generateId(req));
-
-    const cookieApi = (req[SESSION_STORE] = store.api(req, res, iat));
-
-    await cookieApi.setSessionCookie({ iat });
+    await cookieApi.setSessionCookie();
 
     onHeaders(res, () => {
-      try {
-        store.setCookie(req, res, { iat });
-      } catch (err) {
-        debug('Error setting cookie in onHeaders:', err);
-      }
+      store.setCookie(req, res);
     });
 
     if (hasCustomStore) {
-      res.end = customStoreEnd(store, iat, req, res, next);
+      res.end = customStoreEnd(store, req, res, next);
     }
 
     return next();
@@ -87,48 +44,21 @@ export default function appSession(config) {
 }
 
 /**
- * Regenerate session store id
- * @param {import('express').Request} req
- * @param {import('types').ConfigParams} config
- */
-export async function regenerateSessionStoreId(req, config) {
-  if (config.session.store) {
-    req[REGENERATED_SESSION_ID] = await config.session.genid(req);
-  }
-}
-
-/**
- * Replace session
- * @param {import('express').Request} req
- * @param {Partial<import('types').Session>} session
- * @param {import('types').ConfigParams} config
- */
-export function replaceSession(req, session, config) {
-  if (session !== null && session !== undefined) {
-    session[REASSIGN] = true;
-  }
-  // @ts-ignore
-  req[config.session.name] = session;
-}
-
-/**
  * @param {import('express').Request} req
  * @param {string} sessionName
- * @param {any} value
  */
-function attachSessionObject(req, sessionName, value) {
+function attachSessionObject(req, sessionName) {
   Object.defineProperty(req, sessionName, {
     enumerable: true,
     get() {
-      return value;
+      return this[SESSION]?.getSessionData();
     },
     set(arg) {
-      if (arg === null || arg === undefined || arg[REASSIGN]) {
-        value = arg;
+      if (arg === null || arg === undefined) {
+        this[SESSION] = undefined;
       } else {
         throw new TypeError('session object cannot be reassigned');
       }
-      return;
     },
   });
 }
@@ -136,19 +66,18 @@ function attachSessionObject(req, sessionName, value) {
 /**
  * Response.end override function to store session
  * @param {CustomCookieStore|DefaultCookieStore} store cookie store
- * @param {number} iat session issued at
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  * @param {import('express').NextFunction} next
  * @returns {import('express').Response['end']}
  */
-function customStoreEnd(store, iat, req, res, next) {
+function customStoreEnd(store, req, res, next) {
   const endFn = res.end;
 
   // @ts-ignore
   return async function customEnd(...args) {
     try {
-      await store.set(req, { iat });
+      await store.set(req);
       // @ts-ignore
       endFn.call(res, ...args);
     } catch (err) {

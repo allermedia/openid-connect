@@ -7,7 +7,7 @@ import Debug from '../debug.js';
 import isLoggedOut from '../hooks/backchannelLogout/isLoggedOut.js';
 import { TransientCookieHandler } from '../transientHandler.js';
 
-import appSession, { replaceSession } from './appSession.js';
+import appSession from './appSession.js';
 import attemptSilentLogin from './attemptSilentLogin.js';
 import { requiresAuth } from './requiresAuth.js';
 
@@ -130,7 +130,6 @@ function backchannelIsLoggedOutMiddleware(config, router) {
 
       // Clear the session using replaceSession like it was originally
       req[SESSION] = undefined;
-      replaceSession(req, undefined, config);
     }
     next();
   });

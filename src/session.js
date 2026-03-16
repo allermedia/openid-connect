@@ -53,7 +53,7 @@ export class Session {
     this.decorated = decorated;
 
     /** @type {import('types').SessionHeaders} */
-    this.headers = headers;
+    this.headers = { ...headers };
 
     /** @type {Partial<import('openid-client').IDToken>} */
     this.claims = {};
@@ -121,6 +121,16 @@ export class Session {
   }
 
   /**
+   * Get session headers
+   * @returns {Partial<import('types').SessionHeaders>}
+   */
+  getSessionHeaders() {
+    const updatedAt = this.headers.uat ?? epoch();
+    const issuedAt = this.headers?.iat ?? updatedAt;
+    return { iat: issuedAt, uat: updatedAt };
+  }
+
+  /**
    * Get session data
    * @returns {import('types').Session}
    */
@@ -146,14 +156,14 @@ export class Session {
   assertExpired(rollingDuration, absoluteDuration) {
     const { iat, exp, uat } = this.headers;
 
-    const epoch = Date.now() / 1000;
-    strict(exp > epoch, 'it is expired based on options when it was established');
+    const nowEpoch = epoch();
+    strict(exp > nowEpoch, 'it is expired based on options when it was established');
 
     if (rollingDuration) {
-      strict(uat + rollingDuration > epoch, 'it is expired based on current rollingDuration rules');
+      strict(uat + rollingDuration > nowEpoch, 'it is expired based on current rollingDuration rules');
     }
     if (absoluteDuration) {
-      strict(iat + absoluteDuration > epoch, 'it is expired based on current absoluteDuration rules');
+      strict(iat + absoluteDuration > nowEpoch, 'it is expired based on current absoluteDuration rules');
     }
   }
 }
@@ -196,4 +206,8 @@ export class TokenSetSession extends Session {
     this.sid = claims?.sid?.toString();
     this.sub = claims?.sub?.toString();
   }
+}
+
+export function epoch() {
+  return (Date.now() / 1000) | 0;
 }

@@ -4,7 +4,6 @@ import { decodeJwt, createRemoteJWKSet, jwtVerify } from 'jose';
 import { randomNonce, randomPKCECodeVerifier, calculatePKCECodeChallenge } from 'openid-client';
 
 import { encodeState, decodeState } from '../src/hooks/getLoginState.js';
-import { regenerateSessionStoreId, replaceSession } from '../src/middleware/appSession.js';
 
 import { AccessToken } from './access-token.js';
 import { getClient } from './client.js';
@@ -116,17 +115,6 @@ export class ResponseContext {
     this.#res = res;
     this.#next = next;
     this.#transient = transient;
-  }
-
-  /** @type {Partial<import('types').Session> | undefined} */
-  get legacySession() {
-    // @ts-ignore
-    return this.#req[this.#config.session.name];
-  }
-
-  set legacySession(value) {
-    // @ts-ignore
-    this.#req[this.#config.session.name] = value;
   }
 
   /** @type {import('./session.js').Session} */
@@ -325,7 +313,6 @@ export class ResponseContext {
     const idToken = req.oidc.idToken;
 
     this.session = undefined;
-    replaceSession(req, {}, config);
 
     returnUrl = await this.getLogoutUrl(returnUrl, idToken, params?.logoutParams);
 
@@ -378,41 +365,18 @@ export class ResponseContext {
       const newSession = new TokenSetSession(tokenSet);
       const newSub = newSession.sub;
 
-      const existingLegacySession = this.legacySession;
-
-      // Session replacement logic - preserve existing semantics
       if (currentSub && newSub !== currentSub) {
-        this.session = newSession;
-
-        // Different user - replace session and regenerate ID
-        replaceSession(req, newSession, config);
-        if (config.session.store) {
-          await regenerateSessionStoreId(req, config);
-        }
+        await this.cookieApi.replaceSession(newSession);
       } else if (currentSession && !currentSub && newSub) {
         currentSession.update(newSession);
-
-        // New user over anonymous session - preserve session, regenerate ID
-        Object.assign(existingLegacySession, newSession);
-        if (config.session.store) {
-          await regenerateSessionStoreId(req, config);
-        }
+        await this.cookieApi.replaceSession(currentSession);
       } else {
         this.session = newSession;
-
-        // New session or same user - assign session data
-        if (!existingLegacySession) {
-          this.legacySession = {};
-        }
-        Object.assign(this.legacySession, newSession.getSessionData());
       }
 
-      // Call afterCallback hook - preserve existing behavior
       if (config.afterCallback) {
         const updatedSession = await config.afterCallback(req, res, this.session.getSessionData(), state);
         this.session.decorate(updatedSession);
-
-        Object.assign(this.legacySession, updatedSession);
       }
 
       this.#res.oidc.resumeSilentLogin();
@@ -426,7 +390,6 @@ export class ResponseContext {
     } catch (err) {
       if (!state?.attemptingSilentLogin) {
         this.session = undefined;
-        this.legacySession = undefined;
         return this.#next(err);
       }
     }

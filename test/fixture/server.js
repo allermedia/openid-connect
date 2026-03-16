@@ -1,5 +1,4 @@
-import bodyParser from 'body-parser';
-import express from 'express';
+import express, { urlencoded, json } from 'express';
 import { ClientError } from 'openid-client';
 
 import { SESSION, SESSION_STORE } from '../../src/constants.js';
@@ -16,8 +15,8 @@ const debug = Debug('test');
 export function createApp(router, protect, path) {
   const app = express();
 
-  app.use(bodyParser.urlencoded({ extended: false }));
-  app.use(bodyParser.json());
+  app.use(urlencoded({ extended: false }));
+  app.use(json());
 
   if (router) {
     app.use(router);
@@ -28,11 +27,6 @@ export function createApp(router, protect, path) {
   });
 
   app.post('/session', async (req, res) => {
-    Object.keys(req.appSession).forEach((prop) => {
-      delete req.appSession[prop];
-    });
-    Object.assign(req.appSession, req.body);
-
     if (Number(req.get('content-length'))) {
       req[SESSION] = new Session(req.body, {});
     } else {
@@ -77,7 +71,7 @@ export function createApp(router, protect, path) {
   });
 
   app.use('/refresh', async (req, res) => {
-    await req.oidc?.accessToken.refresh();
+    await req.oidc?.accessToken?.refresh();
     return res.redirect(307, req.query.return_to ?? '/');
   });
 
