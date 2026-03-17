@@ -62,6 +62,14 @@ interface AuthorizationParameters {
    */
   audience?: string;
   /**
+   * ID Token `auth_time` claim value will be checked
+   * to be present and conform to this `maxAge` value. Use of this option is
+   * required if you sent a `max_age` parameter in the authorization request.
+   * Default is ClientMetadata.default_max_age and falls back to not
+   * checking the claim's value beyond it being a number when present.
+   */
+  max_age?: number;
+  /**
    * Additional custom parameters.
    */
   [key: string]: unknown;

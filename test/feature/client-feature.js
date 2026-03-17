@@ -1,4 +1,4 @@
-import { randomUUID, subtle, KeyObject } from 'node:crypto';
+import { randomUUID, subtle, KeyObject, createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 
 import { auth } from '@aller/openid-connect';
@@ -57,6 +57,86 @@ Feature('OpenID client', () => {
     });
   });
 
+  Scenario('No client authentication', () => {
+    const issuer = 'https://auth.local';
+    before(() => {
+      setupDiscovery(issuer);
+    });
+
+    /** @type {import('express').Application} */
+    let app;
+    /** @type {request.Agent} */
+    let agent;
+    Given('an app is setup with minimal configuration', () => {
+      app = createApp(
+        auth({
+          secret: 'supers3cret',
+          baseURL: 'http://example.local',
+          clientID: 'none-client-id',
+          clientSecret: 'supers3cret',
+          issuerBaseURL: issuer,
+          clientAuthMethod: 'none',
+        })
+      );
+      agent = request.agent(app);
+    });
+
+    /** @type {import('express').Response} */
+    let response;
+    When('user logs in', async () => {
+      response = await agent.get('/login');
+    });
+
+    let authCallUrl;
+    Then('user is redirected to issuer with code challenge PKCE', () => {
+      expect(response.statusCode, response.text).to.equal(302);
+      authCallUrl = new URL(response.get('location'));
+
+      expect(authCallUrl.pathname).to.equal('/authorize');
+
+      const qs = Object.fromEntries(authCallUrl.searchParams);
+
+      expect(qs, 'authentication parameters').to.deep.include({
+        response_type: 'code',
+        scope: 'openid profile email',
+        code_challenge_method: 'S256',
+        client_id: 'none-client-id',
+      });
+
+      expect(qs).to.have.property('code_challenge').to.be.ok;
+      expect(qs).to.not.have.property('client_secret');
+    });
+
+    When('code is exchanged against tokens with NO auth and code verfier', async () => {
+      const nonce = authCallUrl.searchParams.get('nonce');
+      nock(issuer)
+        .post('/oauth/token', (body) => {
+          return authCallUrl.searchParams.get('code_challenge') === createHash('sha256').update(body.code_verifier).digest('base64url');
+        })
+        .reply(async function reply() {
+          expect(this.req.headers.authorization).to.be.undefined;
+          return [
+            200,
+            {
+              id_token: await makeIdToken({ nonce, sub: randomUUID(), iss: issuer, aud: 'none-client-id' }),
+              refresh_token: randomUUID(),
+              access_token: randomUUID(),
+              token_type: 'Bearer',
+              scope: 'openid profile email',
+              expires_in: 15 * 60 * 60,
+            },
+          ];
+        });
+
+      response = await agent.get('/callback').query({
+        code: randomUUID(),
+        state: authCallUrl.searchParams.get('state'),
+      });
+
+      expect(response.statusCode, response.text).to.equal(302);
+    });
+  });
+
   Scenario('client is setup with custom headers', () => {
     const issuer = 'https://op.example.com/';
     before(() => {
@@ -92,6 +172,7 @@ Feature('OpenID client', () => {
           baseURL: 'http://example.local',
           issuerBaseURL: 'https://op.example.com',
           authRequired: false,
+          /** @type {Parameters<fetch>} */
           customFetch(uri, options) {
             options.headers = {
               ...options.headers,

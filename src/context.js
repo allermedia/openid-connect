@@ -15,6 +15,7 @@ import onLogoutToken from './hooks/backchannelLogout/onLogoutToken.js';
 import { TokenSetSession } from './session.js';
 
 const debug = Debug('context');
+const validResponseTypes = ['id_token', 'code id_token', 'code'];
 
 export class RequestContext {
   #config;
@@ -215,7 +216,7 @@ export class ResponseContext {
         debug('req.oidc.login() without returnTo, using: %s', returnTo);
       }
 
-      /** @type {Record<string, any>} */
+      /** @type {Record<string, any> & {authorizationParams: import('types').AuthorizationParameters}} */
       const authOptions = {
         ...options,
         authorizationParams: {
@@ -235,39 +236,39 @@ export class ResponseContext {
         stateValue.attemptingSilentLogin = true;
       }
 
-      const validResponseTypes = ['id_token', 'code id_token', 'code'];
-      strict(
-        validResponseTypes.includes(authOptions.authorizationParams.response_type),
-        `response_type should be one of ${validResponseTypes.join(', ')}`
-      );
-      strict(/\bopenid\b/.test(authOptions.authorizationParams.scope), 'scope should contain "openid"');
+      const { response_type, scope, max_age, response_mode } = authOptions.authorizationParams;
 
-      /** @type {Record<string, any>} */
+      strict(validResponseTypes.includes(response_type), `response_type should be one of ${validResponseTypes.join(', ')}`);
+      strict(/\bopenid\b/.test(scope), 'scope should contain "openid"');
+
+      /**
+       * Transaction cookie payload
+       * @type {Record<string, any>}
+       */
       const authVerification = {
         nonce: randomNonce(),
         state: encodeState(stateValue),
-        ...(authOptions.authorizationParams.max_age && {
-          max_age: authOptions.authorizationParams.max_age,
-        }),
+        ...(max_age && { max_age }),
       };
+
+      const usePKCE = response_type.includes('code');
+      if (usePKCE) {
+        debug('response_type includes code, the authorization request will use PKCE');
+        authVerification.code_verifier = randomPKCECodeVerifier();
+      }
 
       /** @type {Record<string, any>} */
       const authParams = {
         ...authOptions.authorizationParams,
         ...authVerification,
+        ...(usePKCE && {
+          code_challenge_method: 'S256',
+          code_challenge: await calculatePKCECodeChallenge(authVerification.code_verifier),
+        }),
       };
 
-      const usePKCE = authOptions.authorizationParams.response_type.includes('code');
-      if (usePKCE) {
-        debug('response_type includes code, the authorization request will use PKCE');
-        authVerification.code_verifier = randomPKCECodeVerifier();
-
-        authParams.code_challenge_method = 'S256';
-        authParams.code_challenge = await calculatePKCECodeChallenge(authVerification.code_verifier);
-      }
-
       await transient.setTransactionCookie(res, JSON.stringify(authVerification), {
-        sameSite: authOptions.authorizationParams.response_mode === 'form_post' ? 'none' : config.transactionCookie.sameSite,
+        sameSite: response_mode === 'form_post' ? 'none' : config.transactionCookie.sameSite,
       });
 
       const authorizationUrl = client.authorizationUrl(authParams);

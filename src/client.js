@@ -13,6 +13,7 @@ import {
   ClientSecretPost,
   ClientSecretBasic,
   customFetch,
+  clockTolerance,
   None,
 } from 'openid-client';
 
@@ -155,11 +156,24 @@ function sortSpaceDelimitedString(str) {
 async function createClient(config) {
   debug('Creating client for issuer %s', config.issuerBaseURL);
 
-  const discoveredConfiguration = await discovery(new URL(config.issuerBaseURL), config.clientID, config.clientSecret, undefined, {
+  /** @type {import('openid-client').DiscoveryRequestOptions} */
+  const discoveryOptions = {
     ...(config.httpTimeout && { timeout: config.httpTimeout }),
     ...(config.allowInsecureRequests && { execute: [allowInsecureRequests] }),
     ...(config.customFetch && { [customFetch]: config.customFetch }),
-  });
+  };
+
+  const discoveredConfiguration = await discovery(
+    new URL(config.issuerBaseURL),
+    config.clientID,
+    {
+      client_id: config.clientID,
+      client_secret: config.clientSecret,
+      [clockTolerance]: config.clockTolerance,
+    },
+    undefined,
+    discoveryOptions
+  );
 
   const serverMetadata = discoveredConfiguration.serverMetadata();
 
@@ -170,7 +184,7 @@ async function createClient(config) {
   let clientAuthMethod = config.clientAuthMethod;
   if (!clientAuthMethod) {
     if (config.clientAssertionSigningKey) clientAuthMethod = 'private_key_jwt';
-    else if (config.clientSecret) clientAuthMethod = 'client_secret_post';
+    else if (config.clientSecret) clientAuthMethod = 'client_secret_basic';
     else clientAuthMethod = 'none';
   }
 
@@ -283,9 +297,8 @@ let timestamp = 0;
  * @returns {ReturnType<createClient>}
  */
 export function getClient(config) {
-  const { discoveryCacheMaxAge: cacheMaxAge } = config;
   const now = Date.now();
-  if (cache.has(config) && now < timestamp + cacheMaxAge) {
+  if (cache.has(config) && now < timestamp + config.discoveryCacheMaxAge) {
     return cache.get(config);
   }
   timestamp = now;

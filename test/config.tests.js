@@ -652,13 +652,13 @@ describe('get config', () => {
     });
   });
 
-  it('should default clientAuthMethod to client_secret_post when clientSecret is provided', () => {
+  it('should default clientAuthMethod to client_secret_basic when clientSecret is provided', () => {
     const config = getConfig({
       ...defaultConfig,
       clientSecret: '__test_client_secret__',
     });
     expect(config).to.deep.include({
-      clientAuthMethod: 'client_secret_post',
+      clientAuthMethod: 'client_secret_basic',
     });
   });
 
@@ -669,7 +669,7 @@ describe('get config', () => {
     });
   });
 
-  it('should default clientAuthMethod to client_secret_post for other response types', () => {
+  it('should default clientAuthMethod to client_secret_basic for other response types', () => {
     {
       const config = getConfig({
         ...defaultConfig,
@@ -677,7 +677,7 @@ describe('get config', () => {
         authorizationParams: { response_type: 'code' },
       });
       expect(config).to.deep.include({
-        clientAuthMethod: 'client_secret_post',
+        clientAuthMethod: 'client_secret_basic',
       });
     }
 
@@ -688,7 +688,7 @@ describe('get config', () => {
         authorizationParams: { response_type: 'code id_token' },
       });
       expect(config).to.deep.include({
-        clientAuthMethod: 'client_secret_post',
+        clientAuthMethod: 'client_secret_basic',
       });
     }
   });

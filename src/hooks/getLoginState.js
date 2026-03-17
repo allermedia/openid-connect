@@ -19,12 +19,11 @@ export function defaultState(req, options) {
 
 /**
  * Prepare a state object to send.
- *
+ * Filters out nonce, code_verifier, and max_age from the state object so that the values are
+ * only stored in its dedicated transient cookie
  * @param {any} stateObject
  */
 export function encodeState(stateObject = {}) {
-  // this filters out nonce, code_verifier, and max_age from the state object so that the values are
-  // only stored in its dedicated transient cookie
   const { nonce, code_verifier, max_age, ...filteredState } = stateObject;
   return Buffer.from(JSON.stringify(filteredState)).toString('base64url');
 }

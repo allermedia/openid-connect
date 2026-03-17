@@ -192,7 +192,7 @@ const paramsSchema = Joi.object({
         return 'private_key_jwt';
       }
       if (parent.clientSecret) {
-        return 'client_secret_post';
+        return 'client_secret_basic';
       }
       return 'none';
     })

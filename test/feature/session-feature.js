@@ -344,5 +344,111 @@ Feature('session', () => {
         expect(response.statusCode, response.text).to.equal(302);
       });
     });
+
+    Scenario(`unset session with ${store ? 'custom' : 'cookie'} store rolling duration of 30 days and infinite absolute duration`, () => {
+      before(() => {
+        setupDiscovery();
+        mock.timers.enable({ apis: ['Date'], now: new Date() });
+      });
+      after(() => {
+        mock.timers.reset();
+      });
+
+      /** @type {import('express').Application} */
+      let app;
+      /** @type {import('supertest').Agent} */
+      let agent;
+      Given('a client server is deployed' + store, () => {
+        app = createApp(
+          auth({
+            secret: ['supers3cret', 'oldsupers3cret'],
+            clientID: '__test_client_id__',
+            baseURL: 'http://example.local',
+            issuerBaseURL: 'https://op.example.com',
+            session: {
+              store,
+              rollingDuration: 30 * 24 * 60 * 60,
+              absoluteDuration: false,
+            },
+            authRequired: false,
+            discoveryCacheMaxAge: 365 * 24 * 60 * 60 * 1000,
+          }),
+          requiresAuth()
+        );
+
+        agent = request.agent(app);
+      });
+
+      /** @type {import('express').Response} */
+      let response;
+      When('user authenticates', async () => {
+        response = await agent.get('/protected');
+        expect(response.statusCode, response.text).to.equal(302);
+
+        const authCallUrl = new URL(response.get('location'));
+        expect(authCallUrl.searchParams.get('prompt'), 'prompt').to.be.null;
+
+        const nonce = authCallUrl.searchParams.get('nonce');
+        nock('https://op.example.com')
+          .post('/oauth/token')
+          .query(true)
+          .reply(200, {
+            id_token: await makeIdToken({ nonce, sub: randomUUID() }),
+            refresh_token: randomUUID(),
+            access_token: randomUUID(),
+            token_type: 'Bearer',
+          });
+
+        response = await agent.get('/callback').query({
+          code: randomUUID(),
+          state: authCallUrl.searchParams.get('state'),
+        });
+
+        expect(response.statusCode, response.text).to.equal(302);
+
+        expect(response.get('location')).to.equal('/protected');
+      });
+
+      Then('user is authenticated', async () => {
+        response = await agent.get('/protected');
+        expect(response.statusCode, response.text).to.equal(200);
+      });
+
+      When('one day has passed', () => {
+        mock.timers.tick(24 * 60 * 60 * 1000);
+      });
+
+      Then('user is still authenticated', async () => {
+        response = await agent.get('/protected');
+        expect(response.statusCode, response.text).to.equal(200);
+      });
+
+      When('seven days has passed from first visit', () => {
+        mock.timers.tick(6 * 24 * 60 * 60 * 1000 + 2000);
+      });
+
+      Then('user is still authenticated', async () => {
+        response = await agent.get('/protected');
+        expect(response.statusCode, response.text).to.equal(200);
+      });
+
+      When('a fortnight has passed from last visit', () => {
+        mock.timers.tick(14 * 24 * 60 * 60 * 1000 + 2000);
+      });
+
+      Then('user is still authenticated', async () => {
+        response = await agent.get('/protected');
+        expect(response.statusCode, response.text).to.equal(200);
+      });
+
+      When('a month has passed from last visit', () => {
+        mock.timers.tick(30 * 24 * 60 * 60 * 1000 + 2000);
+      });
+
+      Then('user has to reauthenticate', async () => {
+        response = await agent.get('/protected');
+        expect(response.statusCode, response.text).to.equal(302);
+      });
+    });
   });
 });

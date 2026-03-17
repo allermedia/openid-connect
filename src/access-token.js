@@ -7,9 +7,6 @@ export class AccessToken {
   #config;
   #req;
   #res;
-  #legacySession;
-  /** @type {import('./session.js').Session} */
-  #session;
   /**
    * @param {import('types').ConfigParams} config
    * @param {import('express').Request} req
@@ -19,37 +16,41 @@ export class AccessToken {
     this.#config = config;
     this.#req = req;
     this.#res = res;
-    this.#session = req[SESSION];
+  }
 
-    // @ts-ignore
-    this.#legacySession = req[config.session.name];
+  /**
+   * Token type
+   * @type {import('./session.js').Session}
+   */
+  get #session() {
+    return this.#req[SESSION];
+  }
+
+  /** @type {ReturnType<import('./cookie-store.js').DefaultCookieStore['api']>} */
+  get #cookieApi() {
+    return this.#req[SESSION_STORE];
   }
 
   /**
    * Access token
    */
   get access_token() {
-    return this.#session.access_token;
+    return this.#session?.access_token;
   }
 
   /**
    * Token type
    */
   get token_type() {
-    return this.#session.token_type;
+    return this.#session?.token_type;
   }
 
   /**
    * Access token expires in seconds
    */
   get expires_in() {
-    const expiresAt = this.#session.expires_at;
+    const expiresAt = this.#session?.expires_at;
     return expiresAt ? Math.max(0, Number(expiresAt) - Math.floor(Date.now() / 1000)) : undefined;
-  }
-
-  /** @type {ReturnType<import('./cookie-store.js').DefaultCookieStore['api']>} */
-  get #cookieApi() {
-    return this.#req[SESSION_STORE];
   }
 
   isExpired() {
@@ -68,7 +69,7 @@ export class AccessToken {
     const { client } = await getClient(config);
     const session = this.#session;
 
-    if (!session.refresh_token) {
+    if (!session?.refresh_token) {
       throw new OpenIDConnectBadRequest('No refresh token available');
     }
 
@@ -90,8 +91,6 @@ export class AccessToken {
       session.decorate(updatedSession);
     }
 
-    Object.assign(this.#legacySession, session.getSessionData());
-
     await this.#cookieApi.setSessionCookie();
 
     // @ts-ignore
@@ -99,9 +98,12 @@ export class AccessToken {
   }
 
   toJSON() {
+    const session = this.#session;
+    if (!session) return;
+
     return {
-      access_token: this.access_token,
-      token_type: this.token_type,
+      access_token: session.access_token,
+      token_type: session.token_type,
       expires_in: this.expires_in,
     };
   }

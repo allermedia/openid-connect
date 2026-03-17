@@ -161,19 +161,6 @@ describe('callback response_mode: form_post', () => {
 
     expect(response.statusCode, response.text).to.equal(400);
     expect(response.body.err.code).to.equal('OAUTH_UNSUPPORTED_OPERATION');
-
-    // const { response } = await setup({
-    //   cookies: generateCookies({
-    //     state: '__test_state__',
-    //   }),
-    //   body: {
-    //     state: '__test_state__',
-    //     code: randomUUID(),
-    //     id_token: await makeIdToken(),
-    //   },
-    // });
-    // expect(response.statusCode, response.text).to.equal(400);
-    // expect(response.body.err.code).to.equal('OAUTH_UNSUPPORTED_OPERATION');
   });
 
   it('should error when legacy samesite fallback is off', async () => {
