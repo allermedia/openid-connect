@@ -2,11 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { mock } from 'node:test';
 
 import { auth, requiresAuth } from '@aller/openid-connect';
-import { compactDecrypt } from 'jose';
 import nock from 'nock';
 import request from 'supertest';
 
-import { getEncryptionKeyStore } from '../../src/crypto.js';
 import { makeIdToken } from '../fixture/cert.js';
 import { createApp } from '../fixture/server.js';
 import { CustomStore } from '../helpers/custom-store.js';
