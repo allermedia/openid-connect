@@ -8,6 +8,9 @@ Refactor cookie handling that unfortunately breaks v0.0.1-2 created cookies. Lat
 - use [jose](https://www.npmjs.com/package/jose) all over to encrypt session cookie, it's async so heavy refactoring was needed
 - use [jose](https://www.npmjs.com/package/jose) to sign and verify custom store cookies
 
+### Fixes
+- refactor appSession middleware
+
 ## ~~v0.0.2 (2026-03-10)~~
 
 - provenance pedigree release
