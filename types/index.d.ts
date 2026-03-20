@@ -491,12 +491,12 @@ declare module '@aller/openid-connect' {
 	discoveryCacheMaxAge?: number;
 
 	/**
-	 * Http timeout for oidc client requests in milliseconds.  Default is 5000.   Minimum is 500.
+	 * Http timeout for oidc client requests in seconds. Default is 30.
 	 */
 	httpTimeout?: number;
 
 	/**
-	 * Optional User-Agent header value for oidc client requests.`.
+	 * Optional User-Agent header value for oidc client requests.
 	 */
 	httpUserAgent?: string;
 

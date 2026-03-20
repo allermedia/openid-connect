@@ -164,7 +164,7 @@ Feature('session', () => {
       let app;
       /** @type {import('supertest').Agent} */
       let agent;
-      Given('a client server is deployed' + store, () => {
+      Given('a client server is deployed', () => {
         app = createApp(
           auth({
             secret: ['supers3cret', 'oldsupers3cret'],
@@ -252,7 +252,7 @@ Feature('session', () => {
       let app;
       /** @type {import('supertest').Agent} */
       let agent;
-      Given('a client server is deployed' + store, () => {
+      Given('a client server is deployed', () => {
         app = createApp(
           auth({
             secret: ['supers3cret', 'oldsupers3cret'],
@@ -345,36 +345,35 @@ Feature('session', () => {
       });
     });
 
-    Scenario(`unset session with ${store ? 'custom' : 'cookie'} store rolling duration of 30 days and infinite absolute duration`, () => {
+    Scenario(`middleware manually unsets session with ${store ? 'custom' : 'cookie'} store`, () => {
+      const issuer = 'https://manualunset.auth.local';
       before(() => {
-        setupDiscovery();
-        mock.timers.enable({ apis: ['Date'], now: new Date() });
-      });
-      after(() => {
-        mock.timers.reset();
+        setupDiscovery(issuer);
       });
 
       /** @type {import('express').Application} */
       let app;
       /** @type {import('supertest').Agent} */
       let agent;
-      Given('a client server is deployed' + store, () => {
-        app = createApp(
-          auth({
-            secret: ['supers3cret', 'oldsupers3cret'],
-            clientID: '__test_client_id__',
-            baseURL: 'http://example.local',
-            issuerBaseURL: 'https://op.example.com',
-            session: {
-              store,
-              rollingDuration: 30 * 24 * 60 * 60,
-              absoluteDuration: false,
-            },
-            authRequired: false,
-            discoveryCacheMaxAge: 365 * 24 * 60 * 60 * 1000,
-          }),
-          requiresAuth()
-        );
+      Given('a client server is deployed with a middleware that unsets session', () => {
+        const route = auth({
+          secret: ['supers3cret', 'oldsupers3cret'],
+          clientID: '__test_client_id__',
+          baseURL: 'http://example.local',
+          issuerBaseURL: issuer,
+          session: {
+            name: 'mySession',
+            store,
+          },
+          authRequired: false,
+          discoveryCacheMaxAge: 365 * 24 * 60 * 60 * 1000,
+        });
+        route.delete('/auth/unset', (req, res) => {
+          req.mySession = null;
+          res.json();
+        });
+
+        app = createApp(route, requiresAuth());
 
         agent = request.agent(app);
       });
@@ -389,14 +388,15 @@ Feature('session', () => {
         expect(authCallUrl.searchParams.get('prompt'), 'prompt').to.be.null;
 
         const nonce = authCallUrl.searchParams.get('nonce');
-        nock('https://op.example.com')
+        nock(issuer)
           .post('/oauth/token')
           .query(true)
           .reply(200, {
-            id_token: await makeIdToken({ nonce, sub: randomUUID() }),
+            id_token: await makeIdToken({ nonce, sub: randomUUID(), iss: issuer }),
             refresh_token: randomUUID(),
             access_token: randomUUID(),
             token_type: 'Bearer',
+            expires_in: 3600,
           });
 
         response = await agent.get('/callback').query({
@@ -414,40 +414,13 @@ Feature('session', () => {
         expect(response.statusCode, response.text).to.equal(200);
       });
 
-      When('one day has passed', () => {
-        mock.timers.tick(24 * 60 * 60 * 1000);
+      When('unset session endpoint is called', async () => {
+        response = await agent.delete('/auth/unset');
       });
 
-      Then('user is still authenticated', async () => {
-        response = await agent.get('/protected');
-        expect(response.statusCode, response.text).to.equal(200);
-      });
-
-      When('seven days has passed from first visit', () => {
-        mock.timers.tick(6 * 24 * 60 * 60 * 1000 + 2000);
-      });
-
-      Then('user is still authenticated', async () => {
-        response = await agent.get('/protected');
-        expect(response.statusCode, response.text).to.equal(200);
-      });
-
-      When('a fortnight has passed from last visit', () => {
-        mock.timers.tick(14 * 24 * 60 * 60 * 1000 + 2000);
-      });
-
-      Then('user is still authenticated', async () => {
-        response = await agent.get('/protected');
-        expect(response.statusCode, response.text).to.equal(200);
-      });
-
-      When('a month has passed from last visit', () => {
-        mock.timers.tick(30 * 24 * 60 * 60 * 1000 + 2000);
-      });
-
-      Then('user has to reauthenticate', async () => {
-        response = await agent.get('/protected');
-        expect(response.statusCode, response.text).to.equal(302);
+      Then('user is logged out', async () => {
+        response = await agent.get('/session').expect(200);
+        expect(response.body).to.be.empty;
       });
     });
   });

@@ -31,7 +31,6 @@ export class OpenIDConnectClient {
   constructor(config, serverMetadata, configuration) {
     this.client_id = config.clientID;
     this.serverMetadata = serverMetadata;
-    this.id_token_signed_response_alg = config.idTokenSigningAlg;
     this.config = config;
     this.configuration = configuration;
     if (config.customFetch) {
@@ -167,8 +166,6 @@ async function createClient(config) {
     new URL(config.issuerBaseURL),
     config.clientID,
     {
-      client_id: config.clientID,
-      client_secret: config.clientSecret,
       [clockTolerance]: config.clockTolerance,
     },
     undefined,

@@ -49,7 +49,7 @@ describe('client initialization', () => {
         .reply(200, { ...wellKnown, issuer: 'https://op.aller.local', id_token_signing_alg_values_supported: ['none'] });
 
       const { client } = await getClient(config);
-      expect(client.id_token_signed_response_alg).to.equal('RS256');
+      expect(client.configuration.clientMetadata().id_token_signed_response_alg).to.equal('RS256');
     });
   });
 
