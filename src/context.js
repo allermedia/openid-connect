@@ -7,7 +7,7 @@ import { encodeState, decodeState } from '../src/hooks/getLoginState.js';
 
 import { AccessToken } from './access-token.js';
 import { getClient } from './client.js';
-import { SESSION, SESSION_STORE, COOKIES, SKIP_SILENT_LOGIN_COOKIE_NAME } from './constants.js';
+import { SESSION, SESSION_STORE, COOKIES, SKIP_SILENT_LOGIN_COOKIE_NAME, BASE_URL_AUTODETECT } from './constants.js';
 import Debug from './debug.js';
 import { OpenIDConnectBadRequest } from './errors.js';
 import onLogin from './hooks/backchannelLogout/onLogIn.js';
@@ -136,6 +136,14 @@ export class ResponseContext {
     return this.#req[SESSION_STORE];
   }
 
+  get baseURL() {
+    const base = this.#config.baseURL;
+    if (base !== BASE_URL_AUTODETECT) return base;
+
+    const req = this.#req;
+    return `${req.protocol}://${req.host}`;
+  }
+
   /**
    * Backchannel logout configuration
    * @type {import('types').BackchannelLogoutOptions}
@@ -206,7 +214,8 @@ export class ResponseContext {
       const { client } = await getClient(config);
 
       // Set default returnTo value, allow passed-in options to override or use originalUrl on GET
-      let returnTo = config.baseURL;
+      let returnTo = '/';
+
       if (options?.returnTo) {
         returnTo = options.returnTo;
         debug('req.oidc.login() called with returnTo: %s', returnTo);
@@ -288,18 +297,18 @@ export class ResponseContext {
    *   res.oidc.logout({ returnTo: '/admin-welcome' })
    * });
    * ```
-   * @param {import('types').LogoutOptions} [params]
+   * @param {import('types').LogoutOptions} [options]
    */
-  async logout(params) {
+  async logout(options) {
     const config = this.#config;
     const req = this.#req;
     const res = this.#res;
 
-    let returnUrl = params?.returnTo || config.routes.postLogoutRedirect;
+    let returnUrl = options?.returnTo || config.routes.postLogoutRedirect;
     debug('req.oidc.logout() with return url: %s', returnUrl);
 
     if (new URL(returnUrl, 'http://__nohost').origin === 'http://__nohost') {
-      returnUrl = new URL(returnUrl, config.baseURL).toString();
+      returnUrl = new URL(returnUrl, this.baseURL).toString();
     }
 
     this.#res.oidc.cancelSilentLogin();
@@ -308,14 +317,14 @@ export class ResponseContext {
       debug('end-user already logged out, redirecting to %s', returnUrl);
 
       // perform idp logout with no token hint
-      return res.redirect(await this.getLogoutUrl(returnUrl, undefined, params?.logoutParams));
+      return res.redirect(await this.getLogoutUrl(returnUrl, undefined, options?.logoutParams));
     }
 
     const idToken = req.oidc.idToken;
 
     this.session = undefined;
 
-    returnUrl = await this.getLogoutUrl(returnUrl, idToken, params?.logoutParams);
+    returnUrl = await this.getLogoutUrl(returnUrl, idToken, options?.logoutParams);
 
     debug('logging out of identity provider, redirecting to %s', returnUrl);
     res.redirect(returnUrl);
@@ -395,7 +404,7 @@ export class ResponseContext {
       }
     }
 
-    const redirectTo = state?.returnTo || config.baseURL;
+    const redirectTo = state?.returnTo || this.baseURL;
     res.redirect(redirectTo);
   }
 
@@ -500,7 +509,7 @@ export class ResponseContext {
   getRedirectUri() {
     const config = this.#config;
     if (config.routes.callback) {
-      return new URL(config.routes.callback, config.baseURL).toString();
+      return new URL(config.routes.callback, this.baseURL).toString();
     }
   }
 

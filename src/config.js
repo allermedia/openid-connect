@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 
 import Joi from 'joi';
 
+import { BASE_URL_AUTODETECT } from './constants.js';
 import Debug from './debug.js';
 import { defaultState as getLoginState } from './hooks/getLoginState.js';
 
@@ -125,16 +126,18 @@ const paramsSchema = Joi.object({
     }),
     Joi.boolean(),
   ]).default(false),
-  baseURL: Joi.string()
-    .uri()
-    .required()
-    .when(Joi.ref('authorizationParams.response_mode'), {
-      is: 'form_post',
-      then: Joi.string().pattern(isHttps).rule({
-        warn: true,
-        message: `Using 'form_post' for response_mode may cause issues for you logging in over http`,
+  baseURL: Joi.alternatives([
+    Joi.string()
+      .uri()
+      .when(Joi.ref('authorizationParams.response_mode'), {
+        is: 'form_post',
+        then: Joi.string().pattern(isHttps).rule({
+          warn: true,
+          message: `Using 'form_post' for response_mode may cause issues for you logging in over http`,
+        }),
       }),
-    }),
+    Joi.string().valid(BASE_URL_AUTODETECT),
+  ]).required(),
   clientID: Joi.string().required(),
   clientSecret: Joi.string()
     .when(

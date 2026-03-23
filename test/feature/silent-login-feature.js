@@ -107,10 +107,10 @@ Feature('silent login', () => {
       });
     });
 
-    Then('user is redirected to return url', () => {
+    Then('user is redirected to root', () => {
       expect(response.statusCode, response.text).to.equal(302);
 
-      expect(response.get('location')).to.equal('http://example.local');
+      expect(response.get('location')).to.equal('/');
     });
 
     let cookies;

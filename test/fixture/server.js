@@ -10,7 +10,7 @@ const debug = Debug('test');
 /**
  * @param {import('express').Router} router
  * @param {import('express').RequestHandler} protect
- * @param {string} path
+ * @param {string} [path]
  */
 export function createApp(router, protect, path) {
   const app = express();

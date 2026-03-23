@@ -1,3 +1,5 @@
+import { join } from 'node:path/posix';
+
 import { auth } from '@aller/openid-connect';
 import nock from 'nock';
 import request from 'supertest';
@@ -333,9 +335,9 @@ describe('auth', () => {
     const server = createApp(
       auth({
         ...defaultConfig,
-        getLoginState: (req, opts) => {
+        getLoginState(_req, opts) {
           return {
-            returnTo: opts.returnTo + '/custom-page',
+            returnTo: join(opts.returnTo, '/custom-page'),
             customProp: '__test_custom_prop__',
           };
         },
@@ -347,7 +349,7 @@ describe('auth', () => {
     const parsed = new URL(res.headers.location);
     const decodedState = decodeState(parsed.searchParams.get('state'));
 
-    expect(decodedState.returnTo).to.equal('https://example.org/custom-page');
+    expect(decodedState.returnTo).to.equal('/custom-page');
     expect(decodedState.customProp).to.equal('__test_custom_prop__');
   });
 

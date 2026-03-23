@@ -9,3 +9,4 @@ export const SESSION_ID = Symbol('session_id');
 export const SESSION_STORE = Symbol('session store');
 export const SET_SESSION_COOKIE = Symbol('set cookies');
 export const SKIP_SILENT_LOGIN_COOKIE_NAME = 'skipSilentLogin';
+export const BASE_URL_AUTODETECT = 'autodetect';

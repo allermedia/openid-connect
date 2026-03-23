@@ -32,7 +32,8 @@
   "scripts": {
     "test": "mocha --max-http-header-size=16384",
     "posttest": "npm run lint && npm run build",
-    "lint": "eslint . --cache && prettier . -c",
+    "lint": "eslint . --cache && prettier . -c && npm run test:md",
+    "test:md": "texample",
     "cov:html": "c8 -n src -r html -r text mocha",
     "test:lcov": "c8 -n src -r lcov -r text mocha",
     "build": "rollup -c && dts-buddy"
@@ -65,6 +66,7 @@
     "prettier": "^3.6.2",
     "rollup": "^4.59.0",
     "supertest": "7.2.2",
+    "texample": "^0.1.0",
     "typescript": "^5.8.3"
   },
   "peerDependencies": {

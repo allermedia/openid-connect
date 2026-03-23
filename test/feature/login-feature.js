@@ -172,10 +172,10 @@ Feature('login', () => {
       });
     });
 
-    Then('first user is redirected to return url', () => {
+    Then('first user is redirected to root', () => {
       expect(response.statusCode, response.text).to.equal(302);
 
-      expect(response.get('location')).to.equal('http://example.local');
+      expect(response.get('location')).to.equal('/');
     });
 
     let firstAppSessionCookie;
@@ -214,10 +214,10 @@ Feature('login', () => {
       });
     });
 
-    Then('second user is redirected to return url', () => {
+    Then('second user is redirected to root', () => {
       expect(response.statusCode, response.text).to.equal(302);
 
-      expect(response.get('location')).to.equal('http://example.local');
+      expect(response.get('location')).to.equal('/');
     });
 
     And('session has second user id', async () => {
@@ -286,10 +286,10 @@ Feature('login', () => {
       });
     });
 
-    Then('user is redirected to return url', () => {
+    Then('user is redirected to return to root', () => {
       expect(response.statusCode, response.text).to.equal(302);
 
-      expect(response.get('location')).to.equal('http://example.local');
+      expect(response.get('location')).to.equal('/');
     });
 
     And('session has subject', async () => {
@@ -369,10 +369,10 @@ Feature('login', () => {
       });
     });
 
-    Then('user is redirected to return url', () => {
+    Then('user is redirected to root', () => {
       expect(response.statusCode, response.text).to.equal(302);
 
-      expect(response.get('location')).to.equal('http://example.local');
+      expect(response.get('location')).to.equal('/');
     });
 
     And('session has subject', async () => {

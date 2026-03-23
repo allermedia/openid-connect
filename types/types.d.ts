@@ -421,6 +421,8 @@ interface ConfigParams {
    *  [...]
    * })
    * ```
+   *
+   * Set to `autodetect` if trust proxy is enabled. Base URL will be built from headers `x-forwarded-proto` and `x-forwarded-host`
    */
   baseURL?: string;
 

@@ -39,7 +39,7 @@ export default function auth(params) {
   if (config.routes.login) {
     const path = enforceLeadingSlash(config.routes.login);
     debug(`adding GET ${path} route`);
-    router.get(path, express.urlencoded({ extended: false }), (_req, res) => res.oidc.login({ returnTo: config.baseURL }));
+    router.get(path, express.urlencoded({ extended: false }), (_req, res) => res.oidc.login({ returnTo: '/' }));
   } else {
     debug('login handling route not applied');
   }

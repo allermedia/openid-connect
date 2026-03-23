@@ -204,10 +204,10 @@ Feature('Backchannel logout', () => {
     });
   });
 
-  Scenario('logout token lacks required events', () => {
+  Scenario('logout token lacks required id token properties', () => {
     /** @type {import('express').Response} */
     let response;
-    When('openid server calls backchannel logout without required events', async () => {
+    When('openid server calls backchannel logout without required id token events', async () => {
       response = await request(app)
         .post('/backchannel-logout')
         .set('content-type', 'application/x-www-form-urlencoded')
@@ -222,12 +222,8 @@ Feature('Backchannel logout', () => {
       expect(response.statusCode, response.text).to.equal(400);
       expect(response.body).to.have.property('error', 'invalid_token');
     });
-  });
 
-  Scenario('logout token lacks sub and sid', () => {
-    /** @type {import('express').Response} */
-    let response;
-    When('openid server calls backchannel logout without required events', async () => {
+    When('openid server calls backchannel logout without both sub and sid', async () => {
       response = await request(app)
         .post('/backchannel-logout')
         .set('content-type', 'application/x-www-form-urlencoded')
@@ -244,13 +240,54 @@ Feature('Backchannel logout', () => {
     });
   });
 
+  Scenario('discovery fails', () => {
+    const issuer = 'https://notfound.openid.local';
+    /** @type {import('express').Application} */
+    let app;
+    Given('openid is configured on app', () => {
+      nock(issuer).get('/.well-known/openid-configuration').reply(404);
+
+      app = createApp(
+        auth({
+          secret: '__test_session_secret__',
+          clientID: '__test_client_id__',
+          baseURL: 'http://example.local',
+          issuerBaseURL: issuer,
+          authRequired: false,
+          session: { store: new CustomStore() },
+          discoveryCacheMaxAge: 24 * 3600 * 1000,
+          backchannelLogout: true,
+        }),
+        requiresAuth()
+      );
+    });
+
+    /** @type {import('express').Response} */
+    let response;
+    When('openid server calls backchannel logout', async () => {
+      response = await request(app)
+        .post('/backchannel-logout')
+        .set('content-type', 'application/x-www-form-urlencoded')
+        .send(
+          new URLSearchParams({
+            logout_token: await makeProperLogoutToken({ payload: { iss: issuer, sid: randomUUID() } }),
+          }).toString()
+        );
+    });
+
+    Then('internal server error is returned', () => {
+      expect(response.statusCode, response.text).to.equal(500);
+      expect(response.body).to.have.property('error', 'server_error');
+    });
+  });
+
   Scenario('issuer lacks jwks uri', () => {
     /** @type {import('express').Application} */
-    let anotherApp;
+    let app;
     Given('openid is configured on app', () => {
       setupDiscovery('https://broken.openid.local', { jwks_uri: null });
 
-      anotherApp = createApp(
+      app = createApp(
         auth({
           secret: '__test_session_secret__',
           clientID: '__test_client_id__',
@@ -268,7 +305,7 @@ Feature('Backchannel logout', () => {
     /** @type {import('express').Response} */
     let response;
     When('openid server calls backchannel logout without required events', async () => {
-      response = await request(anotherApp)
+      response = await request(app)
         .post('/backchannel-logout')
         .set('content-type', 'application/x-www-form-urlencoded')
         .send(
