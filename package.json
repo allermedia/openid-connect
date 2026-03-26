@@ -66,8 +66,7 @@
     "prettier": "^3.6.2",
     "rollup": "^4.59.0",
     "supertest": "7.2.2",
-    "texample": "^0.1.0",
-    "typescript": "^5.8.3"
+    "texample": "^0.1.0"
   },
   "peerDependencies": {
     "express": ">= 4.17.0",
