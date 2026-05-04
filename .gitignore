@@ -84,9 +84,13 @@ typings/
 
 .idea
 .DS_Store
+
+# AI
 .github/copilot-instructions.md
 CLAUDE.md
 .claude/
+
+# Misc
 .eslintcache
 .vscode
 package-lock.json

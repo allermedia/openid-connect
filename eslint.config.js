@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import perfectionist from 'eslint-plugin-perfectionist';
 import globals from 'globals';
 
 const rules = {
@@ -10,6 +11,7 @@ const rules = {
   'no-caller': 2,
   'no-catch-shadow': 2,
   'no-console': 2,
+  'no-duplicate-imports': 2,
   'no-eval': 2,
   'no-extend-native': 2,
   'no-extra-bind': 2,
@@ -55,6 +57,11 @@ const rules = {
   'no-useless-escape': 'warn',
   'no-var': 2,
   'no-with': 2,
+  'padding-line-between-statements': [
+    'error',
+    { blankLine: 'always', prev: 'import', next: '*' },
+    { blankLine: 'any', prev: 'import', next: 'import' },
+  ],
   'prefer-const': ['error', { destructuring: 'all' }],
   'require-atomic-updates': 0,
   'require-await': 2,
@@ -66,11 +73,23 @@ const rules = {
   'space-unary-ops': [2, { words: true, nonwords: false }],
   'unicode-bom': ['error', 'never'],
   yoda: [2, 'never'],
+
+  'perfectionist/sort-imports': [
+    'error',
+    {
+      type: 'alphabetical',
+      order: 'asc',
+      ignoreCase: true,
+      newlinesBetween: 1,
+      groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index', 'type'],
+    },
+  ],
 };
 
 export default [
   {
     ...js.configs.recommended,
+    plugins: { perfectionist },
     languageOptions: {
       sourceType: 'module',
       globals: {
