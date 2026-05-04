@@ -1,5 +1,4 @@
 import js from '@eslint/js';
-import eslintImport from 'eslint-plugin-import';
 import globals from 'globals';
 
 const rules = {
@@ -67,24 +66,11 @@ const rules = {
   'space-unary-ops': [2, { words: true, nonwords: false }],
   'unicode-bom': ['error', 'never'],
   yoda: [2, 'never'],
-
-  // Import rules
-  'import/order': [
-    'error',
-    {
-      groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index', 'object', 'type'],
-      'newlines-between': 'always',
-      alphabetize: { order: 'asc', caseInsensitive: true },
-    },
-  ],
-  'import/newline-after-import': ['error', { count: 1 }],
-  'import/no-duplicates': 'error',
 };
 
 export default [
   {
     ...js.configs.recommended,
-    plugins: { import: eslintImport },
     languageOptions: {
       sourceType: 'module',
       globals: {

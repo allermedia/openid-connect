@@ -35,3 +35,14 @@ app.get('/protected', requiresAuth, (req, res) => {
   res.send('plus content');
 });
 ```
+
+## Differences from `express-openid-connect`
+
+- Dual ESM/CJS, built on `openid-client` v6 and `jose` v6 (peer dep). Express 5 compatible, Node ≥ 20.
+- `baseURL: 'autodetect'` resolves from the request at runtime — no need to hard-code the public URL.
+- `clientAuthMethod` defaults from what you provide: `private_key_jwt` if `clientAssertionSigningKey`, else `client_secret_basic` if `clientSecret`, else `none`.
+- `customFetch` hook plumbed through discovery and token/refresh/userinfo calls.
+- Configurable transient cookie via `transactionCookie` (name, `sameSite`).
+- Stateful session store via `session.store` with optional HMAC-signed id cookie (`signSessionStoreCookie` / `requireSignedSessionStoreCookie`).
+- Backchannel logout (`POST /backchannel-logout`) is first-class, with a `backchannelLogout.store` or custom `isLoggedOut` / `onLogoutToken` hooks.
+- No Auth0-specific defaults, env vars, or helpers — generic OIDC only.
