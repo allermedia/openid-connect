@@ -1,6 +1,6 @@
 import { AssertionError } from 'node:assert';
 
-import { serialize, parse } from 'cookie';
+import { parseCookie, stringifySetCookie } from 'cookie';
 
 import { COOKIES, SESSION, SET_SESSION_COOKIE, SESSION_ID, REGENERATED_SESSION_ID, MAX_COOKIE_SIZE } from './constants.js';
 import { getEncryptionKeyStore, getSigningKeyStore, verifyCookie, signCookie, encrypt, decrypt } from './crypto.js';
@@ -24,7 +24,9 @@ export class DefaultCookieStore {
 
     const { transient, ...cookieOptions } = (this.cookieConfig = config.session.cookie);
 
-    const emptyCookie = serialize(`${this.sessionName}.0`, '', {
+    const emptyCookie = stringifySetCookie({
+      name: `${this.sessionName}.0`,
+      value: '',
       ...cookieOptions,
       expires: transient ? new Date(0) : new Date(),
       path: cookieOptions.path || '/',
@@ -123,7 +125,7 @@ export class DefaultCookieStore {
    */
   getCookie(req) {
     const sessionName = this.sessionName;
-    const cookies = (req[COOKIES] = parse(req.get('cookie') || ''));
+    const cookies = (req[COOKIES] = parseCookie(req.get('cookie') || ''));
     if (sessionName in cookies) {
       return cookies[this.sessionName];
     } else if (`${sessionName}.0` in cookies) {

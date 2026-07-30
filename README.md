@@ -38,7 +38,7 @@ app.get('/protected', requiresAuth, (req, res) => {
 
 ## Differences from `express-openid-connect`
 
-- Dual ESM/CJS, built on `openid-client` v6 and `jose` v6 (peer dep). Express 5 compatible, Node ≥ 20.
+- ESM only, built on `openid-client` v6 and `jose` v6 (peer dep). Express 5 compatible, Node ≥ 22.
 - `baseURL: 'autodetect'` resolves from the request at runtime — no need to hard-code the public URL.
 - `clientAuthMethod` defaults from what you provide: `private_key_jwt` if `clientAssertionSigningKey`, else `client_secret_basic` if `clientSecret`, else `none`.
 - `customFetch` hook plumbed through discovery and token/refresh/userinfo calls.

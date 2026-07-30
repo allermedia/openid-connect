@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-`@aller/openid-connect` — Express middleware providing OpenID Connect auth. Inspired by `express-openid-connect`, rebuilt on top of the current `openid-client` (v6) and `jose` (v6). Published as dual ESM (`src/index.js`) / CJS (`lib/index.cjs` via Rollup) with generated `.d.ts` from JSDoc.
+`@aller/openid-connect` — Express middleware providing OpenID Connect auth. Inspired by `express-openid-connect`, rebuilt on top of the current `openid-client` (v6) and `jose` (v6). Published as ESM only (`src/index.js`) with generated `.d.ts` from JSDoc.
 
-Node >= 20 required (`.nvmrc` pins 22). Type: `module`.
+Node >= 22 required (`.nvmrc` pins 22). Type: `module`.
 
 ## Commands
 
 - `npm test` — Mocha test suite (extension `js`, recursive, BDD Gherkin-style via `mocha-cakes-2`). Posttest runs `lint` + `build`.
 - **Always lint after running tests.** `npm test` already chains `posttest` → `npm run lint && npm run build`, so it's covered. If you run Mocha directly (e.g. `npx mocha test/foo.tests.js`), follow up with `npm run lint` before declaring a task done.
 - `npm run lint` — ESLint (`eslint . --cache`) + Prettier check + `texample` (executes README fenced code blocks).
-- `npm run build` — Rollup CJS bundle, then `dts-buddy` to emit `types/index.d.ts` from JSDoc in `src/`.
+- `npm run build` — `dts-buddy` emits `types/index.d.ts` from JSDoc in `src/`.
 - `npm run cov:html` / `npm run test:lcov` — Coverage via `c8` over `src`.
 - Single test file: `npx mocha test/login.tests.js`. Grep by scenario: `npx mocha --grep "default configuration"`.
 - Scenario globals (`Feature`, `Scenario`, `Given`, `When`, `Then`, `And`, `But`, `expect`) are provided by `mocha-cakes-2` + `chai/register-expect.js` — see `.mocharc.json` and `eslint.config.js`.
@@ -67,4 +67,4 @@ JSDoc in `src/` drives types. `types/types.d.ts` declares `Express.Request#oidc`
 
 ## Code style
 
-ESLint config in `eslint.config.js` is strict: `no-console: error`, `eqeqeq`, `prefer-const`, `require-await`, mandatory semicolons, alphabetized `import/order` with `newlines-between: 'always'`. Prettier enforces formatting; `.prettierrc` sets the repo style. `lib/` is generated — never edit by hand.
+ESLint config in `eslint.config.js` is strict: `no-console: error`, `eqeqeq`, `prefer-const`, `require-await`, mandatory semicolons, alphabetized `import/order` with `newlines-between: 'always'`. Prettier enforces formatting; `.prettierrc` sets the repo style.

@@ -1,5 +1,12 @@
 # Change Log
 
+## v0.1.0 (2026-07-30)
+
+### Breaking
+- require node >= 22
+- drop CJS build, package is now ESM only
+- upgrade [cookie](https://www.npmjs.com/package/cookie) to v2
+
 ## v0.0.4 (2026-03-17)
 
 ### Breaking

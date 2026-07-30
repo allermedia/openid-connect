@@ -123,6 +123,6 @@ export default [
     },
   },
   {
-    ignores: ['CHANGELOG.md', 'coverage/**', 'docs/**', 'node_modules/**', 'lib/**', 'tmp/**'],
+    ignores: ['CHANGELOG.md', 'coverage/**', 'docs/**', 'node_modules/**', 'tmp/**'],
   },
 ];
