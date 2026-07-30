@@ -2,7 +2,7 @@ import onHeaders from 'on-headers';
 
 import { SESSION, SESSION_STORE } from '../constants.js';
 import { DefaultCookieStore, CustomCookieStore } from '../cookie-store.js';
-import Debug from '../debug.js';
+import { Debug } from '../debug.js';
 
 const debug = Debug('session');
 
@@ -11,7 +11,7 @@ const debug = Debug('session');
  * @param {import('types').ConfigParams} config
  * @returns {import('express').RequestHandler}
  */
-export default function appSession(config) {
+export function appSession(config) {
   const sessionName = config.session.name;
 
   const hasCustomStore = !!config.session.store;

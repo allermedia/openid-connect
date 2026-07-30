@@ -6,7 +6,7 @@ import request from 'supertest';
 import { getConfig } from '../src/config.js';
 import { SESSION } from '../src/constants.js';
 import { getSigningKeyStore, signCookie } from '../src/crypto.js';
-import appSession from '../src/middleware/appSession.js';
+import { appSession } from '../src/middleware/appSession.js';
 
 import { createApp } from './fixture/server.js';
 import { CustomStore } from './helpers/custom-store.js';

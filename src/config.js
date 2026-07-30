@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import Joi from 'joi';
 
 import { BASE_URL_AUTODETECT } from './constants.js';
-import Debug from './debug.js';
+import { Debug } from './debug.js';
 import { defaultState as getLoginState } from './hooks/getLoginState.js';
 import { promisifyStore } from './store.js';
 

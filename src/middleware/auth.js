@@ -3,13 +3,13 @@ import express from 'express';
 import { getConfig } from '../config.js';
 import { SESSION } from '../constants.js';
 import { RequestContext, ResponseContext } from '../context.js';
-import Debug from '../debug.js';
-import isLoggedOut from '../hooks/backchannelLogout/isLoggedOut.js';
+import { Debug } from '../debug.js';
+import { isLoggedOut } from '../hooks/backchannelLogout/isLoggedOut.js';
 import { Store } from '../store.js';
 import { TransientCookieHandler } from '../transientHandler.js';
 
-import appSession from './appSession.js';
-import attemptSilentLogin from './attemptSilentLogin.js';
+import { appSession } from './appSession.js';
+import { attemptSilentLogin } from './attemptSilentLogin.js';
 import { requiresAuth } from './requiresAuth.js';
 
 const debug = Debug('');
@@ -21,7 +21,7 @@ const debug = Debug('');
  *
  * @returns {express.Router} the router
  */
-export default function auth(params) {
+export function auth(params) {
   const config = getConfig(params);
   debug('configuration object processed, resulting configuration: %O', config);
   const router = express.Router();

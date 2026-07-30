@@ -4,7 +4,7 @@ import { parseCookie, stringifySetCookie } from 'cookie';
 
 import { COOKIES, SESSION, SET_SESSION_COOKIE, SESSION_ID, REGENERATED_SESSION_ID, MAX_COOKIE_SIZE } from './constants.js';
 import { getEncryptionKeyStore, getSigningKeyStore, verifyCookie, signCookie, encrypt, decrypt } from './crypto.js';
-import Debug from './debug.js';
+import { Debug } from './debug.js';
 import { StoredSession } from './session.js';
 
 const debug = Debug('cookie-store');

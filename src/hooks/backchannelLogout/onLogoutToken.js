@@ -3,7 +3,7 @@
  * @param {any} token
  * @param {import('types').ConfigParams} config
  */
-export default async function onLogoutToken(token, config) {
+export async function onLogoutToken(token, config) {
   const {
     session: { absoluteDuration, rolling: rollingEnabled, rollingDuration, store },
     backchannelLogout,

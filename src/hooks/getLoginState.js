@@ -1,4 +1,4 @@
-import Debug from '../debug.js';
+import { Debug } from '../debug.js';
 
 const debug = Debug('getLoginState');
 

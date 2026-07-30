@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 
 import { SignJWT, importJWK } from 'jose';
 
-import Debug from '../../src/debug.js';
+import { Debug } from '../../src/debug.js';
 
 const debug = Debug('test');
 

@@ -2,7 +2,7 @@ import express, { urlencoded, json } from 'express';
 import { ClientError } from 'openid-client';
 
 import { SESSION, SESSION_STORE } from '../../src/constants.js';
-import Debug from '../../src/debug.js';
+import { Debug } from '../../src/debug.js';
 import { Session } from '../../src/session.js';
 
 const debug = Debug('test');

@@ -1,4 +1,4 @@
-import Debug from '../debug.js';
+import { Debug } from '../debug.js';
 import { UnauthorizedError } from '../errors.js';
 
 const debug = Debug('requiresAuth');

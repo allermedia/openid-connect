@@ -17,7 +17,7 @@ import {
   None,
 } from 'openid-client';
 
-import Debug from './debug.js';
+import { Debug } from './debug.js';
 import { OpenIDConnectError, OpenIDConnectBadRequest } from './errors.js';
 
 const debug = Debug('client');

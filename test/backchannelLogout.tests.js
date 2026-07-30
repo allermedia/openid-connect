@@ -3,8 +3,8 @@ import nock from 'nock';
 import request from 'supertest';
 
 import { getConfig } from '../src/config.js';
-import isLoggedOut from '../src/hooks/backchannelLogout/isLoggedOut.js';
-import onLogin from '../src/hooks/backchannelLogout/onLogIn.js';
+import { isLoggedOut } from '../src/hooks/backchannelLogout/isLoggedOut.js';
+import { onLogIn as onLogin } from '../src/hooks/backchannelLogout/onLogIn.js';
 
 import { makeIdToken, makeLogoutToken } from './fixture/cert.js';
 import { createApp } from './fixture/server.js';

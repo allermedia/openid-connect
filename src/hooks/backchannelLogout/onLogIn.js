@@ -5,7 +5,7 @@ import { getClient } from '../../client.js';
  * @param {import('express').Request} req
  * @param {import('types').ConfigParams} config
  */
-export default async function onLogIn(req, config) {
+export async function onLogIn(req, config) {
   const {
     issuer: { issuer },
   } = await getClient(config);

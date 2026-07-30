@@ -5,7 +5,7 @@ import { getClient } from '../../client.js';
  * @param {import('express').Request} req
  * @param {import('types').ConfigParams} config
  */
-export default async function isLoggedOut(req, config) {
+export async function isLoggedOut(req, config) {
   // @ts-ignore
   const store = config.backchannelLogout?.store || config.session.store;
   const {

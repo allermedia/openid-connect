@@ -2,16 +2,7 @@ declare module '@aller/openid-connect' {
 	import type { default as express, Request, Response } from 'express';
 	import type { JWK, CryptoKey } from 'jose';
 	import type { KeyObject } from 'node:crypto';
-	/**
-	 * Express-session compatible session store base class.
-	 *
-	 * Session store factories that expect the express-session module can be instantiated
-	 * with `auth`, which exposes this class as `auth.Store`. Stores extending this class
-	 * are considered callback based and are promisified by `getConfig`.
-	 * */
-	export function Store(): void;
-	export class Store {
-	}
+	export function attemptSilentLogin(): (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void | Promise<void>;
 	/**
 	 * Returns a router with two routes /login and /callback
 	 *
@@ -23,7 +14,16 @@ declare module '@aller/openid-connect' {
 	export namespace auth {
 		export { Store };
 	}
-	export function attemptSilentLogin(): (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void | Promise<void>;
+	/**
+	 * Express-session compatible session store base class.
+	 *
+	 * Session store factories that expect the express-session module can be instantiated
+	 * with `auth`, which exposes this class as `auth.Store`. Stores extending this class
+	 * are considered callback based and are promisified by `getConfig`.
+	 * */
+	export function Store(): void;
+	export class Store {
+	}
 	export function requiresAuth(requiresLoginCheck?: typeof defaultRequiresLogin): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
 	/**
 	 * ID token calim equals

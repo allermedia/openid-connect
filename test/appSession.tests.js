@@ -5,7 +5,7 @@ import { CompactEncrypt } from 'jose';
 import request from 'supertest';
 
 import { getConfig } from '../src/config.js';
-import appSession from '../src/middleware/appSession.js';
+import { appSession } from '../src/middleware/appSession.js';
 
 import { makeIdToken } from './fixture/cert.js';
 import { createApp } from './fixture/server.js';

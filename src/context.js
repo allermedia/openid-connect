@@ -8,10 +8,10 @@ import { encodeState, decodeState } from '../src/hooks/getLoginState.js';
 import { AccessToken } from './access-token.js';
 import { getClient } from './client.js';
 import { SESSION, SESSION_STORE, COOKIES, SKIP_SILENT_LOGIN_COOKIE_NAME, BASE_URL_AUTODETECT } from './constants.js';
-import Debug from './debug.js';
+import { Debug } from './debug.js';
 import { OpenIDConnectBadRequest } from './errors.js';
-import onLogin from './hooks/backchannelLogout/onLogIn.js';
-import onLogoutToken from './hooks/backchannelLogout/onLogoutToken.js';
+import { onLogIn as onLogin } from './hooks/backchannelLogout/onLogIn.js';
+import { onLogoutToken } from './hooks/backchannelLogout/onLogoutToken.js';
 import { TokenSetSession } from './session.js';
 
 const debug = Debug('context');

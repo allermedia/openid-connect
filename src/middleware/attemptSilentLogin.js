@@ -1,4 +1,4 @@
-export default function attemptSilentLogin() {
+export function attemptSilentLogin() {
   /**
    * Silent login
    * @param {import('express').Request} req
