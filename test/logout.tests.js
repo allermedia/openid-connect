@@ -57,6 +57,19 @@ describe('logout route', () => {
     });
   });
 
+  it('should redirect to the identity provider without id_token_hint when not authenticated', async () => {
+    const server = createApp(
+      auth({
+        ...defaultConfig,
+        idpLogout: true,
+      })
+    );
+
+    const response = await request(server).get('/logout');
+    expect(response.statusCode, response.text).to.equal(302);
+    expect(response.headers.location).to.equal('https://op.example.com/session/end?post_logout_redirect_uri=http%3A%2F%2Fexample.org%2F');
+  });
+
   it('should perform a distributed logout', async () => {
     const server = createApp(
       auth({
@@ -106,7 +119,7 @@ describe('logout route', () => {
       },
     });
     const server = createApp(router);
-    router.get('/logout', (req, res) => res.oidc.logout({ returnTo: 'http://www.another-example.org/logout' }));
+    router.get('/logout', (_req, res) => res.oidc.logout({ returnTo: 'http://www.another-example.org/logout' }));
 
     const agent = request.agent(server);
     await login(agent);
@@ -135,7 +148,9 @@ describe('logout route', () => {
     const agent = request.agent(server);
     const { session: loggedInSession } = await login(agent, undefined, '/foo');
     expect(loggedInSession.id_token).to.be.ok;
-    const sessionCookie = agent.jar.getCookies({ domain: '127.0.0.1', path: '/foo' }).find(({ name }) => name === 'appSession');
+    const sessionCookie = agent.jar
+      .getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/foo' }))
+      .find(({ name }) => name === 'appSession');
     expect(sessionCookie.path).to.equal('/foo');
     const { session: loggedOutSession } = await logout(agent, '/foo');
     expect(loggedOutSession.id_token).to.not.be.ok;
@@ -147,9 +162,11 @@ describe('logout route', () => {
     const agent = request.agent(server);
     await login(agent);
 
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' }).find(({ name }) => name === 'skipSilentLogin')).to.not.be.ok;
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' })).find(({ name }) => name === 'skipSilentLogin')).to
+      .not.be.ok;
     await logout(agent);
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' }).find(({ name }) => name === 'skipSilentLogin')).to.be.ok;
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' })).find(({ name }) => name === 'skipSilentLogin')).to
+      .be.ok;
   });
 
   it('should pass logout params to end session url', async () => {
@@ -218,7 +235,7 @@ describe('logout route', () => {
       routes: { logout: false },
     });
     const server = createApp(router);
-    router.get('/logout', (req, res) =>
+    router.get('/logout', (_req, res) =>
       res.oidc.logout({
         logoutParams: { post_logout_redirect_uri: 'http://bar.com' },
       })
@@ -242,7 +259,7 @@ describe('logout route', () => {
       routes: { logout: false },
     });
     const server = createApp(router);
-    router.get('/logout', (req, res) =>
+    router.get('/logout', (_req, res) =>
       res.oidc.logout({
         logoutParams: { id_token_hint: null },
       })

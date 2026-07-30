@@ -7,6 +7,12 @@
 - drop CJS build, package is now ESM only
 - upgrade [cookie](https://www.npmjs.com/package/cookie) to v2
 
+### Additions
+- callback based express-session compatible session stores, e.g. [memorystore](https://www.npmjs.com/package/memorystore), now work via `auth.Store`
+
+### Fixes
+- close test coverage gaps and remove dead code
+
 ## v0.0.4 (2026-03-17)
 
 ### Breaking

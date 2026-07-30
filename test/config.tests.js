@@ -41,6 +41,7 @@ describe('get config', () => {
   });
 
   it('should require a fully qualified URL for issuer', () => {
+    /** @type {Partial<import('types').ConfigParams>} */
     const config = {
       ...defaultConfig,
       issuerBaseURL: 'www.example.com',
@@ -105,6 +106,15 @@ describe('get config', () => {
         secure: true,
       },
     });
+  });
+
+  it('should warn but accept an insecure session cookie for https baseURL', () => {
+    const config = getConfig({
+      ...defaultConfig,
+      baseURL: 'https://example.com',
+      session: { cookie: { secure: false } },
+    });
+    expect(config.session.cookie.secure).to.be.false;
   });
 
   it('should set custom cookie configuration', () => {
@@ -197,7 +207,7 @@ describe('get config', () => {
       secret: ['__test_session_secret_1__', '__test_session_secret_2__'],
       session: {
         cookie: {
-          sameSite: 'Strict',
+          sameSite: /** @type {any} */ ('Strict'),
         },
       },
     });
@@ -216,12 +226,12 @@ describe('get config', () => {
       ...defaultConfig,
       secret: ['__test_session_secret_1__', '__test_session_secret_2__'],
       transactionCookie: {
-        sameSite: 'Strict',
+        sameSite: /** @type {any} */ ('Strict'),
         name: 'CustomTxnCookie',
       },
       session: {
         cookie: {
-          sameSite: 'Lax',
+          sameSite: /** @type {any} */ ('Lax'),
         },
       },
     });
@@ -310,7 +320,7 @@ describe('get config', () => {
         ...defaultConfig,
         session: {
           rolling: true,
-          rollingDuration: false,
+          rollingDuration: /** @type {any} */ (false),
         },
       });
     }).to.throw('"session.rollingDuration" must be provided an integer value when "session.rolling" is true');
@@ -332,7 +342,7 @@ describe('get config', () => {
     expect(() => {
       getConfig({
         ...defaultConfig,
-        secret: { key: '__test_session_secret__' },
+        secret: /** @type {any} */ ({ key: '__test_session_secret__' }),
       });
     }).to.throw('"secret" must be one of [string, binary, array]');
   });
@@ -343,7 +353,7 @@ describe('get config', () => {
         ...defaultConfig,
         session: {
           cookie: {
-            httpOnly: '__invalid_httponly__',
+            httpOnly: /** @type {any} */ ('__invalid_httponly__'),
           },
         },
       });
@@ -357,7 +367,7 @@ describe('get config', () => {
         secret: '__test_session_secret__',
         session: {
           cookie: {
-            secure: '__invalid_secure__',
+            secure: /** @type {any} */ ('__invalid_secure__'),
           },
         },
       });
@@ -371,7 +381,7 @@ describe('get config', () => {
         secret: '__test_session_secret__',
         session: {
           cookie: {
-            sameSite: '__invalid_samesite__',
+            sameSite: /** @type {any} */ ('__invalid_samesite__'),
           },
         },
       });
@@ -385,7 +395,7 @@ describe('get config', () => {
         secret: '__test_session_secret__',
         session: {
           cookie: {
-            domain: false,
+            domain: /** @type {any} */ (false),
           },
         },
       });
@@ -396,21 +406,21 @@ describe('get config', () => {
     expect(() => {
       getConfig({
         ...defaultConfig,
-        httpTimeout: 'abcd',
+        httpTimeout: /** @type {any} */ ('abcd'),
       });
     }).to.throw('"httpTimeout" must be a number');
 
     expect(() => {
       getConfig({
         ...defaultConfig,
-        httpTimeout: '-100',
+        httpTimeout: /** @type {any} */ ('-100'),
       });
     }).to.throw('"httpTimeout" must be greater than or equal to 500');
 
     expect(() => {
       getConfig({
         ...defaultConfig,
-        httpTimeout: '499',
+        httpTimeout: /** @type {any} */ ('499'),
       });
     }).to.throw('"httpTimeout" must be greater than or equal to 500');
   });
@@ -425,6 +435,7 @@ describe('get config', () => {
   });
 
   it('should allow code flow without client secret (public client with PKCE)', () => {
+    /** @type {Partial<import('types').ConfigParams>} */
     const config = {
       ...defaultConfig,
       authorizationParams: {
@@ -436,6 +447,7 @@ describe('get config', () => {
   });
 
   it('should allow hybrid flow without client secret (public client with PKCE)', () => {
+    /** @type {Partial<import('types').ConfigParams>} */
     const config = {
       ...defaultConfig,
       authorizationParams: {
@@ -447,6 +459,7 @@ describe('get config', () => {
   });
 
   it('should allow code flow with explicit clientAuthMethod "none" (public client with PKCE)', () => {
+    /** @type {Partial<import('types').ConfigParams>} */
     const config = {
       ...defaultConfig,
       authorizationParams: {
@@ -459,6 +472,7 @@ describe('get config', () => {
   });
 
   it('should require "clientAssertionSigningKey" when clientAuthMethod is "private_key_jwt"', () => {
+    /** @type {Partial<import('types').ConfigParams>} */
     const config = {
       ...defaultConfig,
       authorizationParams: {
@@ -473,6 +487,7 @@ describe('get config', () => {
   });
 
   it('should default to "private_key_jwt" when "clientAssertionSigningKey" is present', () => {
+    /** @type {Partial<import('types').ConfigParams>} */
     const config = {
       ...defaultConfig,
       authorizationParams: {
@@ -497,6 +512,7 @@ describe('get config', () => {
 
   // Test HMAC requirement with code flow instead
   it('should require clientSecret for ID tokens with HMAC based algorithms', () => {
+    /** @type {Partial<import('types').ConfigParams>} */
     const config = {
       ...defaultConfig,
       idTokenSigningAlg: 'HS256',
@@ -508,6 +524,7 @@ describe('get config', () => {
   });
 
   it('should require clientSecret for ID tokens in hybrid flow with HMAC based algorithms', () => {
+    /** @type {Partial<import('types').ConfigParams>} */
     const config = {
       ...defaultConfig,
       idTokenSigningAlg: 'HS256',
@@ -519,6 +536,7 @@ describe('get config', () => {
   });
 
   it('should require clientSecret for ID tokens in code flow with HMAC based algorithms', () => {
+    /** @type {Partial<import('types').ConfigParams>} */
     const config = {
       ...defaultConfig,
       idTokenSigningAlg: 'HS256',
@@ -704,7 +722,7 @@ describe('get config', () => {
     expect(() =>
       getConfig({
         ...defaultConfig,
-        backchannelLogout: { store: {} },
+        backchannelLogout: { store: /** @type {any} */ ({}) },
       })
     ).to.not.throw();
   });
@@ -714,7 +732,7 @@ describe('get config', () => {
       getConfig({
         ...defaultConfig,
         backchannelLogout: true,
-        session: { store: {} },
+        session: { store: /** @type {any} */ ({}) },
       })
     ).to.not.throw();
   });
@@ -724,7 +742,7 @@ describe('get config', () => {
       getConfig({
         ...defaultConfig,
         backchannelLogout: {
-          isLoggedOut: () => {},
+          isLoggedOut: /** @type {any} */ (() => {}),
           onLogoutToken: () => {},
         },
       })

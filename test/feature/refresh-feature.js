@@ -23,7 +23,7 @@ Feature('Refresh', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server is setup', () => {
       app = createApp(
@@ -44,7 +44,7 @@ Feature('Refresh', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user navigates to protected content', async () => {
       response = await agent.get('/protected');
@@ -91,7 +91,7 @@ Feature('Refresh', () => {
     let cookies;
     let appSessionCookie;
     And('authentication session cookie is set', () => {
-      cookies = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+      cookies = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
       appSessionCookie = cookies.find((c) => c.name === 'appSession');
       expect(appSessionCookie).to.deep.include({
         noscript: true,
@@ -136,7 +136,7 @@ Feature('Refresh', () => {
 
     And('authentication session cookie is refreshed', () => {
       expect(response.get('set-cookie')).to.have.length(1);
-      cookies = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+      cookies = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
       appSessionCookie = cookies.find((c) => c.name === 'appSession');
       expect(appSessionCookie).to.deep.include({
         noscript: true,
@@ -192,7 +192,7 @@ Feature('Refresh', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server is setup', () => {
       app = createApp(
@@ -213,7 +213,7 @@ Feature('Refresh', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     let accessToken;
     When('user is authenticated without refresh token', async () => {
@@ -265,7 +265,7 @@ Feature('Refresh', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server with custom store is setup', () => {
       app = createApp(
@@ -287,7 +287,7 @@ Feature('Refresh', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     let refreshToken;
     And('a session with just refresh token exists', () => {
@@ -340,7 +340,7 @@ Feature('Refresh', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server is setup', () => {
       app = createApp(
@@ -361,7 +361,7 @@ Feature('Refresh', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     let accessToken;
     When('user is authenticated without refresh token', async () => {

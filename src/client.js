@@ -306,8 +306,3 @@ export function getClient(config) {
   cache.set(config, promise);
   return promise;
 }
-
-export function clearCache() {
-  cache.clear();
-  timestamp = 0;
-}

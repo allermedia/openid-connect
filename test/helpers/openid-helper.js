@@ -32,5 +32,5 @@ export function setupDiscovery(issuer = 'https://op.example.com/', override) {
  * @param {string} [issuer]
  */
 export function setupJwks(issuer = 'https://op.example.com/') {
-  return nock(issuer).get('/.well-known/jwks.json').optionally().reply(200, jwks);
+  return nock(issuer).get('/.well-known/jwks.json').optionally().reply(200, jwks).persist();
 }

@@ -1,4 +1,6 @@
+import { auth } from '@aller/openid-connect';
 import express from 'express';
+import memorystore from 'memorystore';
 import request from 'supertest';
 
 import { getConfig } from '../src/config.js';
@@ -35,8 +37,6 @@ function sessionData() {
     data: { sub: '__test_sub__' },
   });
 }
-
-const baseUrl = 'http://localhost:3000';
 
 /**
  * Login with claims
@@ -76,13 +76,7 @@ describe('appSession custom store', () => {
 
   it('should not error for non existent sessions', async () => {
     const server = await setup();
-    const res = await request(server).get('/session', {
-      baseUrl,
-      json: true,
-      headers: {
-        cookie: 'appSession=__invalid_identity__',
-      },
-    });
+    const res = await request(server).get('/session').set('cookie', 'appSession=__invalid_identity__');
     expect(res.statusCode, res.text).to.equal(200);
     expect(res.body).to.be.empty;
   });
@@ -108,7 +102,7 @@ describe('appSession custom store', () => {
 
     expect(res.statusCode, res.text).to.equal(200);
     expect(res.body).to.deep.equal({ sub: '__test_sub__' });
-    const [cookie] = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+    const [cookie] = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
 
     expect(cookie).to.deep.include({
       name: 'appSession',
@@ -163,7 +157,7 @@ describe('appSession custom store', () => {
     await agent.post('/session');
     const loggedOutRes = await agent.get('/session');
     expect(loggedOutRes.body).to.be.empty;
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })).to.be.empty;
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))).to.be.empty;
     expect(await middlewareConfig.session.store.dbSize()).to.equal(0);
   });
 
@@ -257,7 +251,7 @@ describe('appSession custom store', () => {
     const res = await agent.get('/session').set('cookie', `appSession=foo`);
     expect(res.statusCode, res.text).to.equal(200);
     expect(res.body).to.deep.equal({ sub: '__test_sub__' });
-    const [cookie] = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+    const [cookie] = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
     expect(cookie).to.deep.include({
       name: 'appSession',
       value: 'foo',
@@ -279,7 +273,7 @@ describe('appSession custom store', () => {
     expect(res.statusCode, res.text).to.equal(200);
     expect(res.body).to.deep.equal({ sub: '__test_sub__' });
 
-    const [cookie] = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+    const [cookie] = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
     expect(cookie).to.deep.include({
       name: 'appSession',
       value: signedCookieValue,
@@ -301,7 +295,7 @@ describe('appSession custom store', () => {
     expect(res.statusCode, res.text).to.equal(200);
     expect(res.body).to.deep.equal({ sub: '__test_sub__' });
 
-    const [cookie] = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+    const [cookie] = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
     expect(cookie).to.deep.include({
       name: 'appSession',
       value: signedCookieValue,
@@ -338,5 +332,47 @@ describe('appSession custom store', () => {
     // Should not crash with destructuring error, should create new empty session
     expect(res.statusCode, res.text).to.equal(200);
     expect(res.body).to.be.empty;
+  });
+
+  describe('express-session compatible store', () => {
+    const MemoryStore = memorystore(auth);
+
+    function setupMemoryStore() {
+      const conf = getConfig({
+        ...defaultConfig,
+        session: {
+          ...defaultConfig.session,
+          store: /** @type {any} */ (new MemoryStore({ max: 100 })),
+        },
+      });
+      return createApp(appSession(conf));
+    }
+
+    it('memorystore instantiated with auth extends auth.Store', () => {
+      expect(new MemoryStore({ max: 100 })).to.be.instanceof(auth.Store);
+    });
+
+    it('should store and restore a session with a callback based store', async () => {
+      const server = setupMemoryStore();
+      const agent = request.agent(server);
+
+      await login(agent, { sub: '__memorystore_user__' });
+
+      const res = await agent.get('/session');
+      expect(res.statusCode, res.text).to.equal(200);
+      expect(res.body).to.have.property('sub', '__memorystore_user__');
+    });
+
+    it('should destroy the stored session when it is cleared', async () => {
+      const server = setupMemoryStore();
+      const agent = request.agent(server);
+
+      await login(agent, { sub: '__memorystore_user__' });
+      await agent.post('/session').send();
+
+      const res = await agent.get('/session');
+      expect(res.statusCode, res.text).to.equal(200);
+      expect(res.body).to.be.empty;
+    });
   });
 });

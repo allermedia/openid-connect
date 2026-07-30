@@ -45,7 +45,7 @@ Feature('session', () => {
         agent = request.agent(app);
       });
 
-      /** @type {import('express').Response} */
+      /** @type {import('supertest').Response} */
       let response;
       When('user authenticates and receives access token that expires in 15 minutes and ID token that expires in 14 days', async () => {
         response = await agent.get('/protected');

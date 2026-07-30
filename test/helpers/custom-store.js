@@ -1,12 +1,8 @@
-import { randomUUID } from 'node:crypto';
-
 export class CustomStore {
   /** @type {Map<string, any>} */
   #store;
-  #instance;
   constructor() {
     this.#store = new Map();
-    this.#instance = randomUUID();
   }
   /**
    * Get value by key
@@ -39,7 +35,8 @@ export class CustomStore {
    * @param {string} key
    */
   destroy(key) {
-    return Promise.resolve(this.#store.delete(key));
+    this.#store.delete(key);
+    return Promise.resolve();
   }
   /**
    * Get ttl
@@ -51,7 +48,6 @@ export class CustomStore {
   }
   /**
    * Get db size
-   * @param {string} key
    */
   dbSize() {
     return Promise.resolve(this.#store.size);

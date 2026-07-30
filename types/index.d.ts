@@ -3,6 +3,16 @@ declare module '@aller/openid-connect' {
 	import type { JWK, CryptoKey } from 'jose';
 	import type { KeyObject } from 'node:crypto';
 	/**
+	 * Express-session compatible session store base class.
+	 *
+	 * Session store factories that expect the express-session module can be instantiated
+	 * with `auth`, which exposes this class as `auth.Store`. Stores extending this class
+	 * are considered callback based and are promisified by `getConfig`.
+	 * */
+	export function Store(): void;
+	export class Store {
+	}
+	/**
 	 * Returns a router with two routes /login and /callback
 	 *
 	 * @param params The parameters object; see index.d.ts for types and descriptions.
@@ -11,17 +21,7 @@ declare module '@aller/openid-connect' {
 	 */
 	export function auth(params?: Partial<ConfigParams>): express.Router;
 	export namespace auth {
-		/**
-		 * Used for instantiating a custom session store. eg
-		 *
-		 * ```js
-		 * const { auth } = import('express-openid-connect');
-		 * const MemoryStore = import('memorystore');
-		 * const store = MemoryStore(auth);
-		 * ```
-		 *
-		 * */
-		function Store(): void;
+		export { Store };
 	}
 	export function attemptSilentLogin(): (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void | Promise<void>;
 	export function requiresAuth(requiresLoginCheck?: typeof defaultRequiresLogin): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
@@ -192,7 +192,7 @@ declare module '@aller/openid-connect' {
 	 * If an array of secrets is provided, only the first element will be used to sign or encrypt the values, while all
 	 * the elements will be considered when decrypting or verifying the values.
 	 */
-	secret?: string | Array<string>;
+	secret?: string | Buffer | Array<string | Buffer>;
 
 	/**
 	 * Object defining application session cookie attributes.
@@ -317,7 +317,7 @@ declare module '@aller/openid-connect' {
 	 * }))
 	 * ``
 	 */
-	getLoginState?: (req: Request, options: LoginOptions) => Promise<Record<string, any>>;
+	getLoginState?: (req: Request, options: LoginOptions) => Record<string, any> | Promise<Record<string, any>>;
 
 	/**
 	 * Function for custom callback handling after receiving and validating the ID Token and before redirecting.
@@ -336,7 +336,12 @@ declare module '@aller/openid-connect' {
 	 * }))
 	 * ``
 	 */
-	afterCallback?: (req: Request, res: Response, session: Session, decodedState?: { [key: string]: any }) => Promise<Session> | Session;
+	afterCallback?: (
+	  req: Request,
+	  res: Response,
+	  session: Session,
+	  decodedState?: { [key: string]: any }
+	) => Session | Record<string, any> | Promise<Session | Record<string, any>>;
 
 	/**
 	 * Array value of claims to remove from the ID token before storing the cookie session.
@@ -472,7 +477,7 @@ declare module '@aller/openid-connect' {
 	 * }))
 	 * ```
 	 */
-	clientAssertionSigningKey?: CryptoKey | KeyObject | JWK | string;
+	clientAssertionSigningKey?: CryptoKey | KeyObject | JWK | string | Buffer;
 
 	/**
 	 * The algorithm to sign the client assertion JWT.
@@ -480,7 +485,7 @@ declare module '@aller/openid-connect' {
 	 * If the Authorization Server discovery document does not list `token_endpoint_auth_signing_alg_values_supported`
 	 * this property will be required.
 	 */
-	clientAssertionSigningAlg?: ClientAssertionSigningAlg;
+	clientAssertionSigningAlg?: ClientAssertionSigningAlg | keyof typeof ClientAssertionSigningAlg;
 
 	/**
 	 * Additional request body properties to be sent to the `token_endpoint` during authorization code exchange or token refresh.

@@ -280,7 +280,7 @@ interface CallbackOptions {
    * This is useful to specify in addition to {@link ConfigParams.baseURL} when your app runs on multiple domains,
    * it should match {@link LoginOptions.authorizationParams.redirect_uri}
    */
-  redirectUri: string;
+  redirectUri?: string;
 
   /**
    * Additional request body properties to be sent to the `token_endpoint.
@@ -350,7 +350,7 @@ interface ConfigParams {
    * If an array of secrets is provided, only the first element will be used to sign or encrypt the values, while all
    * the elements will be considered when decrypting or verifying the values.
    */
-  secret?: string | Array<string>;
+  secret?: string | Buffer | Array<string | Buffer>;
 
   /**
    * Object defining application session cookie attributes.
@@ -475,7 +475,7 @@ interface ConfigParams {
    * }))
    * ``
    */
-  getLoginState?: (req: Request, options: LoginOptions) => Promise<Record<string, any>>;
+  getLoginState?: (req: Request, options: LoginOptions) => Record<string, any> | Promise<Record<string, any>>;
 
   /**
    * Function for custom callback handling after receiving and validating the ID Token and before redirecting.
@@ -494,7 +494,12 @@ interface ConfigParams {
    * }))
    * ``
    */
-  afterCallback?: (req: Request, res: Response, session: Session, decodedState?: { [key: string]: any }) => Promise<Session> | Session;
+  afterCallback?: (
+    req: Request,
+    res: Response,
+    session: Session,
+    decodedState?: { [key: string]: any }
+  ) => Session | Record<string, any> | Promise<Session | Record<string, any>>;
 
   /**
    * Array value of claims to remove from the ID token before storing the cookie session.
@@ -630,7 +635,7 @@ interface ConfigParams {
    * }))
    * ```
    */
-  clientAssertionSigningKey?: CryptoKey | KeyObject | JWK | string;
+  clientAssertionSigningKey?: CryptoKey | KeyObject | JWK | string | Buffer;
 
   /**
    * The algorithm to sign the client assertion JWT.
@@ -638,7 +643,7 @@ interface ConfigParams {
    * If the Authorization Server discovery document does not list `token_endpoint_auth_signing_alg_values_supported`
    * this property will be required.
    */
-  clientAssertionSigningAlg?: ClientAssertionSigningAlg;
+  clientAssertionSigningAlg?: ClientAssertionSigningAlg | keyof typeof ClientAssertionSigningAlg;
 
   /**
    * Additional request body properties to be sent to the `token_endpoint` during authorization code exchange or token refresh.

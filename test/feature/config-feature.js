@@ -40,7 +40,7 @@ Feature('Configuration', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     /** @type {URL} */
     let authCallUrl;
@@ -87,6 +87,7 @@ Feature('Configuration', () => {
 
     Then('session cookie has the expected default properties', () => {
       const setCookies = Object.fromEntries(
+        // @ts-ignore
         response.get('set-cookie').map((c) => {
           const cookie = parseSetCookie(c);
           return [cookie.name, cookie];
@@ -132,7 +133,7 @@ Feature('Configuration', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     /** @type {URL} */
     let authCallUrl;
@@ -244,7 +245,7 @@ Feature('Configuration', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     /** @type {URL} */
     let authCallUrl;
@@ -339,7 +340,7 @@ Feature('Configuration', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     /** @type {URL} */
     let authCallUrl;

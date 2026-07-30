@@ -44,16 +44,16 @@ Feature('Backchannel logout', () => {
   });
 
   Scenario('multiple logins', () => {
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent1;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent2;
     Given('user owns two devices', () => {
       agent1 = request.agent(app);
       agent2 = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     let userSubject;
     let accessToken;
@@ -145,7 +145,7 @@ Feature('Backchannel logout', () => {
   });
 
   Scenario('logout token is of the wrong type', () => {
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('openid server calls backchannel logout without required events', async () => {
       response = await request(app)
@@ -185,7 +185,7 @@ Feature('Backchannel logout', () => {
       );
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('openid server calls backchannel logout without required events', async () => {
       response = await request(anotherApp)
@@ -205,7 +205,7 @@ Feature('Backchannel logout', () => {
   });
 
   Scenario('logout token lacks required id token properties', () => {
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('openid server calls backchannel logout without required id token events', async () => {
       response = await request(app)
@@ -262,7 +262,7 @@ Feature('Backchannel logout', () => {
       );
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('openid server calls backchannel logout', async () => {
       response = await request(app)
@@ -302,7 +302,7 @@ Feature('Backchannel logout', () => {
       );
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('openid server calls backchannel logout without required events', async () => {
       response = await request(app)

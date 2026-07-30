@@ -8,8 +8,8 @@ import { Session } from '../../src/session.js';
 const debug = Debug('test');
 
 /**
- * @param {import('express').Router} router
- * @param {import('express').RequestHandler} protect
+ * @param {import('express').Router | import('express').RequestHandler} [router]
+ * @param {import('express').RequestHandler} [protect]
  * @param {string} [path]
  */
 export function createApp(router, protect, path) {
@@ -72,7 +72,7 @@ export function createApp(router, protect, path) {
 
   app.use('/refresh', async (req, res) => {
     await req.oidc?.accessToken?.refresh();
-    return res.redirect(307, req.query.return_to ?? '/');
+    return res.redirect(307, String(req.query.return_to ?? '/'));
   });
 
   if (protect) {

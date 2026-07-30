@@ -43,6 +43,6 @@ app.get('/protected', requiresAuth, (req, res) => {
 - `clientAuthMethod` defaults from what you provide: `private_key_jwt` if `clientAssertionSigningKey`, else `client_secret_basic` if `clientSecret`, else `none`.
 - `customFetch` hook plumbed through discovery and token/refresh/userinfo calls.
 - Configurable transient cookie via `transactionCookie` (name, `sameSite`).
-- Stateful session store via `session.store` with optional HMAC-signed id cookie (`signSessionStoreCookie` / `requireSignedSessionStoreCookie`).
+- Stateful session store via `session.store` with optional HMAC-signed id cookie (`signSessionStoreCookie` / `requireSignedSessionStoreCookie`). Both promise based stores and callback based express-session compatible stores (instantiated with `auth`, e.g. `memorystore(auth)`) are supported.
 - Backchannel logout (`POST /backchannel-logout`) is first-class, with a `backchannelLogout.store` or custom `isLoggedOut` / `onLogoutToken` hooks.
 - No Auth0-specific defaults, env vars, or helpers — generic OIDC only.

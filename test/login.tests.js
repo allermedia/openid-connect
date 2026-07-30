@@ -4,7 +4,7 @@ import { auth } from '@aller/openid-connect';
 import nock from 'nock';
 import request from 'supertest';
 
-import { decodeState } from '../src/hooks/getLoginState.js';
+import { decodeState, defaultState } from '../src/hooks/getLoginState.js';
 
 import { createApp } from './fixture/server.js';
 import { setupDiscovery } from './helpers/openid-helper.js';
@@ -246,7 +246,7 @@ describe('auth', () => {
       ...defaultConfig,
       routes: { login: false },
     });
-    router.get('/login', (req, res) => {
+    router.get('/login', (_req, res) => {
       res.oidc.login({
         returnTo: 'https://example.org/custom-redirect',
         authorizationParams: {
@@ -300,7 +300,7 @@ describe('auth', () => {
     router.get('/login', (_req, res) => {
       res.oidc.login({
         authorizationParams: {
-          response_type: 'invalid',
+          response_type: /** @type {any} */ ('invalid'),
         },
       });
     });
@@ -317,10 +317,10 @@ describe('auth', () => {
       routes: { login: false },
       transactionCookie: { name: 'CustomTxnCookie' },
     });
-    router.get('/login', (req, res) => {
+    router.get('/login', (_req, res) => {
       res.oidc.login({
         authorizationParams: {
-          response_type: 'invalid',
+          response_type: /** @type {any} */ ('invalid'),
         },
       });
     });
@@ -351,6 +351,26 @@ describe('auth', () => {
 
     expect(decodedState.returnTo).to.equal('/custom-page');
     expect(decodedState.customProp).to.equal('__test_custom_prop__');
+  });
+
+  it('default state builder falls back to req.originalUrl as returnTo', () => {
+    expect(defaultState(/** @type {any} */ ({ originalUrl: '/original-url' }), {})).to.deep.equal({ returnTo: '/original-url' });
+  });
+
+  it('should fail with 500 when a custom state builder returns a non-object', async () => {
+    const server = createApp(
+      auth({
+        ...defaultConfig,
+        getLoginState: /** @type {any} */ (
+          () => {
+            return 'not an object';
+          }
+        ),
+      })
+    );
+    const res = await request(server).get('/login');
+    expect(res.statusCode, res.text).to.equal(500);
+    expect(res.body.err.message).to.equal('Custom state value must be an object.');
   });
 
   it('should use PKCE when response_type includes code', async () => {
@@ -385,7 +405,7 @@ describe('auth', () => {
         },
         session: {
           cookie: {
-            sameSite: 'Strict',
+            sameSite: /** @type {any} */ ('Strict'),
           },
         },
       })
@@ -402,7 +422,7 @@ describe('auth', () => {
         ...defaultConfig,
         clientSecret: '__test_client_secret__',
         transactionCookie: {
-          sameSite: 'Strict',
+          sameSite: /** @type {any} */ ('Strict'),
         },
         authorizationParams: {
           response_mode: 'query',
@@ -425,7 +445,7 @@ describe('auth', () => {
           response_mode: 'form_post',
         },
         transactionCookie: {
-          sameSite: 'Strict',
+          sameSite: /** @type {any} */ ('Strict'),
         },
       })
     );

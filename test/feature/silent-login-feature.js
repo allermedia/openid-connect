@@ -16,7 +16,7 @@ Feature('silent login', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server is setup', () => {
       app = createApp(
@@ -33,7 +33,7 @@ Feature('silent login', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user client attempts to fetch images on protected route', async () => {
       response = await agent.get('/protected').set('accept', 'image/png');
@@ -44,7 +44,7 @@ Feature('silent login', () => {
     });
 
     And('NO cookie is set to indicate silent login', () => {
-      expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' }).length).to.equal(0);
+      expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' })).length).to.equal(0);
     });
 
     When('user client makes fetch request accepting JSON', async () => {
@@ -67,7 +67,7 @@ Feature('silent login', () => {
     });
 
     And('cookie is set to indicate silent login', () => {
-      expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })[0]).to.deep.include({
+      expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))[0]).to.deep.include({
         name: 'skipSilentLogin',
         value: 'true',
         noscript: true,
@@ -115,7 +115,7 @@ Feature('silent login', () => {
 
     let cookies;
     And('authentication session cookie is set', () => {
-      cookies = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+      cookies = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
       expect(cookies.find((c) => c.name === 'appSession')).to.be.ok;
     });
 

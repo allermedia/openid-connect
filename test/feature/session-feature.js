@@ -39,7 +39,7 @@ Feature('session', () => {
       firstAgent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user authenticates', async () => {
       response = await firstAgent.get('/protected');
@@ -72,7 +72,7 @@ Feature('session', () => {
     let cookies;
     let appSessionCookie;
     Then('authentication session cookie is set', () => {
-      cookies = firstAgent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+      cookies = firstAgent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
       appSessionCookie = cookies.find((c) => c.name === 'appSession');
       expect(appSessionCookie).to.deep.include({ noscript: true });
     });
@@ -111,7 +111,7 @@ Feature('session', () => {
     });
 
     And('session cookie has been updated', () => {
-      const newCookies = secondAgent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+      const newCookies = secondAgent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
       const oldAppSessionCookie = cookies.find((c) => c.name === 'appSession');
       const newAppSessionCookie = newCookies.find((c) => c.name === 'appSession');
       expect(oldAppSessionCookie.value === newAppSessionCookie.value, 'sessions are equal').to.be.false;
@@ -145,7 +145,9 @@ Feature('session', () => {
     });
 
     And('session cookie has been removed', () => {
-      const appSessionCookie = thirdAgent.jar.getCookies({ domain: '127.0.0.1', path: '/' }).find((c) => c.name === 'appSession');
+      const appSessionCookie = thirdAgent.jar
+        .getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))
+        .find((c) => c.name === 'appSession');
       expect(appSessionCookie?.value).to.not.be.ok;
     });
   });
@@ -185,7 +187,7 @@ Feature('session', () => {
         agent = request.agent(app);
       });
 
-      /** @type {import('express').Response} */
+      /** @type {import('supertest').Response} */
       let response;
       When('user authenticates', async () => {
         response = await agent.get('/protected');
@@ -273,7 +275,7 @@ Feature('session', () => {
         agent = request.agent(app);
       });
 
-      /** @type {import('express').Response} */
+      /** @type {import('supertest').Response} */
       let response;
       When('user authenticates', async () => {
         response = await agent.get('/protected');
@@ -378,7 +380,7 @@ Feature('session', () => {
         agent = request.agent(app);
       });
 
-      /** @type {import('express').Response} */
+      /** @type {import('supertest').Response} */
       let response;
       When('user authenticates', async () => {
         response = await agent.get('/protected');

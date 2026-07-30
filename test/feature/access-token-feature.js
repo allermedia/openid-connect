@@ -60,7 +60,7 @@ Feature('Access token', () => {
         agent = request.agent(app);
       });
 
-      /** @type {import('express').Response} */
+      /** @type {import('supertest').Response} */
       let response;
       let accessToken;
       let refreshToken;

@@ -339,7 +339,7 @@ export class ResponseContext {
    *  res.oidc.callback({ redirectUri: 'https://example.com/callback' });
    * });
    * ```
-   * @param {import('types').CallbackOptions & {params: Record<string, any>}} [options]
+   * @param {import('types').CallbackOptions & {params?: Record<string, any>}} [options]
    */
   async callback(options) {
     const config = this.#config;
@@ -432,7 +432,7 @@ export class ResponseContext {
       try {
         await onToken(token, config);
         res.status(204).send();
-      } catch (e) {
+      } catch (/** @type {any} */ e) {
         debug('req.oidc.backchannelLogout() failed with: %s', e.message);
         res.status(400).json({
           error: 'application_error',
@@ -476,7 +476,7 @@ export class ResponseContext {
         }
 
         debug('Logout token verified successfully');
-      } catch (verificationError) {
+      } catch (/** @type {any} */ verificationError) {
         debug('Logout token verification failed: %s', verificationError.message);
         res.status(400).json({
           error: 'invalid_token',
@@ -490,7 +490,7 @@ export class ResponseContext {
       try {
         await onToken(verifiedToken, config);
         res.status(204).send();
-      } catch (e) {
+      } catch (/** @type {any} */ e) {
         debug('req.oidc.backchannelLogout() failed with: %s', e.message);
         res.status(400).json({
           error: 'application_error',

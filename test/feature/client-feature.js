@@ -35,7 +35,7 @@ Feature('OpenID client', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user logs in', async () => {
       response = await agent.get('/login');
@@ -81,7 +81,7 @@ Feature('OpenID client', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user logs in', async () => {
       response = await agent.get('/login');
@@ -172,7 +172,6 @@ Feature('OpenID client', () => {
           baseURL: 'http://example.local',
           issuerBaseURL: 'https://op.example.com',
           authRequired: false,
-          /** @type {Parameters<fetch>} */
           customFetch(uri, options) {
             options.headers = {
               ...options.headers,
@@ -187,7 +186,7 @@ Feature('OpenID client', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user logs in and callback is called', async () => {
       response = await agent.get('/login');
@@ -279,7 +278,7 @@ Feature('OpenID client', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user logs in and callback is called', async () => {
       response = await agent.get('/login');
@@ -330,10 +329,12 @@ Feature('OpenID client', () => {
       setupDiscovery(issuer);
     });
 
-    /** @type {Awaited<ReturnType<import('node:crypto')['subtle']['generateKey']>>} */
+    /** @type {import('node:crypto').webcrypto.CryptoKeyPair} */
     let keyPair;
     Given('EdDSA key pair exist', async () => {
-      keyPair = await subtle.generateKey('Ed25519', true, ['sign', 'verify']);
+      keyPair = /** @type {import('node:crypto').webcrypto.CryptoKeyPair} */ (
+        await subtle.generateKey('Ed25519', true, ['sign', 'verify'])
+      );
     });
 
     /** @type {import('express').Application} */
@@ -355,7 +356,7 @@ Feature('OpenID client', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user logs in and callback is called', async () => {
       response = await agent.get('/login');
@@ -414,10 +415,12 @@ Feature('OpenID client', () => {
       setupDiscovery(issuer);
     });
 
-    /** @type {Awaited<ReturnType<import('node:crypto')['subtle']['generateKey']>>} */
+    /** @type {import('node:crypto').webcrypto.CryptoKeyPair} */
     let keyPair;
     Given('EdDSA key pair exist', async () => {
-      keyPair = await subtle.generateKey('Ed25519', true, ['sign', 'verify']);
+      keyPair = /** @type {import('node:crypto').webcrypto.CryptoKeyPair} */ (
+        await subtle.generateKey('Ed25519', true, ['sign', 'verify'])
+      );
     });
 
     /** @type {import('express').Application} */
@@ -440,7 +443,7 @@ Feature('OpenID client', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user logs in and callback is called', async () => {
       response = await agent.get('/login');
@@ -511,7 +514,7 @@ Feature('OpenID client', () => {
           baseURL: 'http://example.local',
           issuerBaseURL: issuer,
           authRequired: false,
-          clientAssertionSigningAlg: 'UnSUP',
+          clientAssertionSigningAlg: /** @type {any} */ ('UnSUP'),
           clientAuthMethod: 'private_key_jwt',
           clientAssertionSigningKey: await fs.readFile('./test/fixture/private-key.pem'),
         })
@@ -519,7 +522,7 @@ Feature('OpenID client', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user attempts to log in', async () => {
       response = await agent.get('/login');
@@ -555,7 +558,7 @@ Feature('OpenID client', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     And('user is logged in', async () => {
       response = await agent.get('/login');

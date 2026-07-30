@@ -19,7 +19,7 @@ Feature('login', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server is setup with default cookie store', () => {
       app = createApp(
@@ -36,7 +36,7 @@ Feature('login', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('user navigates to protected content', async () => {
       response = await agent.get('/protected');
@@ -52,7 +52,7 @@ Feature('login', () => {
     });
 
     And('cookie is set to indicate authentication attempt', () => {
-      expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })[0]).to.deep.include({
+      expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))[0]).to.deep.include({
         name: 'auth_verification',
         noscript: true,
       });
@@ -85,7 +85,7 @@ Feature('login', () => {
     let cookies;
     let appSessionCookie;
     And('authentication session cookie is set', () => {
-      cookies = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+      cookies = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
       appSessionCookie = cookies.find((c) => c.name === 'appSession');
       expect(appSessionCookie).to.deep.include({
         noscript: true,
@@ -123,7 +123,7 @@ Feature('login', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server is setup with custom store', () => {
       app = createApp(
@@ -180,7 +180,9 @@ Feature('login', () => {
 
     let firstAppSessionCookie;
     And('first user session cookie is set', () => {
-      firstAppSessionCookie = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' }).find((c) => c.name === 'appSession');
+      firstAppSessionCookie = agent.jar
+        .getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))
+        .find((c) => c.name === 'appSession');
       expect(firstAppSessionCookie).to.be.ok;
     });
 
@@ -242,7 +244,7 @@ Feature('login', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server is setup', () => {
       app = createApp(
@@ -305,7 +307,7 @@ Feature('login', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     /** @type {CustomStore} */
     let store;
@@ -389,7 +391,7 @@ Feature('login', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server is setup with custom store', () => {
       app = createApp(
@@ -450,7 +452,7 @@ Feature('login', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server is setup with custom store', () => {
       app = createApp(
@@ -506,7 +508,7 @@ Feature('login', () => {
 
     /** @type {import('express').Application} */
     let app;
-    /** @type {request.agent} */
+    /** @type {request.Agent} */
     let agent;
     Given('a client server is setup', () => {
       app = createApp(
@@ -527,7 +529,7 @@ Feature('login', () => {
       agent = request.agent(app);
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     let accessToken;
     When('token type is not returned when user logs in', async () => {

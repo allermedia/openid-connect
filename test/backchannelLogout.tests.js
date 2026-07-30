@@ -3,6 +3,7 @@ import nock from 'nock';
 import request from 'supertest';
 
 import { getConfig } from '../src/config.js';
+import isLoggedOut from '../src/hooks/backchannelLogout/isLoggedOut.js';
 import onLogin from '../src/hooks/backchannelLogout/onLogIn.js';
 
 import { makeIdToken, makeLogoutToken } from './fixture/cert.js';
@@ -13,7 +14,7 @@ import { setupDiscovery } from './helpers/openid-helper.js';
 /**
  * Login and get session with id_token
  * @param {import('supertest').Agent} agent
- * @param {Record<string, any>} [idToken]
+ * @param {string} [idToken]
  */
 async function login(agent, idToken) {
   return agent.post('/session').send({
@@ -27,6 +28,7 @@ describe('back-channel logout', () => {
   });
   after(nock.cleanAll);
 
+  /** @type {any} */
   let client;
   let store;
   let config;
@@ -51,6 +53,20 @@ describe('back-channel logout', () => {
       await new Promise((resolve) => client.flushall(resolve));
       await new Promise((resolve) => client.quit(resolve));
     }
+  });
+
+  it('isLoggedOut hook throws if id token claims lack both sid and sub', async () => {
+    const validatedConfig = getConfig(config);
+    const req = /** @type {any} */ ({ oidc: { idTokenClaims: {} } });
+
+    let error;
+    try {
+      await isLoggedOut(req, validatedConfig);
+    } catch (err) {
+      error = err;
+    }
+    expect(error, 'expected isLoggedOut to throw').to.be.ok;
+    expect(error.message).to.equal(`The session must have a 'sid' or a 'sub'`);
   });
 
   it('should only handle post requests', async () => {
@@ -196,7 +212,7 @@ describe('back-channel logout', () => {
     let res = await agent.get('/session');
 
     expect(res.body).to.not.be.empty;
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })).to.not.be.empty;
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))).to.not.be.empty;
 
     res = await agent
       .post('/backchannel-logout')
@@ -214,7 +230,7 @@ describe('back-channel logout', () => {
     const { body } = await agent.get('/session');
 
     expect(body).to.be.be.empty;
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })).to.be.empty;
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))).to.be.empty;
   });
 
   it('should log sub out on subsequent requests', async () => {
@@ -226,7 +242,7 @@ describe('back-channel logout', () => {
     let res = await agent.get('/session');
 
     expect(res.body).to.not.be.empty;
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })).to.not.be.empty;
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))).to.not.be.empty;
 
     res = await agent
       .post('/backchannel-logout')
@@ -243,7 +259,7 @@ describe('back-channel logout', () => {
 
     res = await agent.get('/session');
 
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })).to.be.empty;
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))).to.be.empty;
     expect(res.body).to.be.empty;
   });
 
@@ -267,13 +283,13 @@ describe('back-channel logout', () => {
     let payload = await store.get('https://op.example.com/|__foo_sub__');
     expect(payload).to.be.ok;
 
-    await onLogin({ oidc: { idTokenClaims: { sub: '__foo_sub__' } } }, getConfig(config));
+    await onLogin(/** @type {any} */ ({ oidc: { idTokenClaims: { sub: '__foo_sub__' } } }), getConfig(config));
     payload = await store.get('https://op.example.com/|__foo_sub__');
     expect(payload).to.not.be.ok;
 
     const { body } = await agent.get('/session');
 
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })).to.not.be.empty;
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))).to.not.be.empty;
     expect(body).to.not.be.empty;
   });
 

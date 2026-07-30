@@ -24,7 +24,7 @@ export class TransientCookieHandler {
    *
    * @param {import('express').Response} res Express Response object.
    * @param {string} value Cookie value
-   * @param {Object} opts Cookie options
+   * @param {Object} [opts] Cookie options
    * @param {"lax"|"none"|"strict"|boolean} [opts.sameSite] SameSite attribute of "none," "lax," or "strict". Default is "none".
    * @param {Boolean} [opts.legacySameSiteCookie] Should a fallback cookie be set? Default is true.
    *

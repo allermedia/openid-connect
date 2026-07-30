@@ -70,14 +70,14 @@ export class DefaultCookieStore {
 
   /**
    * @param {string} sessionCookieValue
-   * @returns {Promise<import('types').SessionStorePayload<import('types').Session>>}
+   * @returns {Promise<{sessionId: string, header: import('types').SessionHeaders, data: import('types').Session}>}
    */
   async get(sessionCookieValue) {
     const { payload, header } = await decrypt(this.decryptKeys, sessionCookieValue);
 
     return {
       sessionId: sessionCookieValue,
-      header,
+      header: /** @type {import('types').SessionHeaders} */ (/** @type {unknown} */ (header)),
       data: JSON.parse(payload),
     };
   }

@@ -5,6 +5,7 @@ import Joi from 'joi';
 import { BASE_URL_AUTODETECT } from './constants.js';
 import Debug from './debug.js';
 import { defaultState as getLoginState } from './hooks/getLoginState.js';
+import { promisifyStore } from './store.js';
 
 const debug = Debug('config');
 
@@ -237,6 +238,13 @@ export function getConfig(config) {
 
   if (warning) {
     debug(warning.message);
+  }
+
+  if (value.session?.store) {
+    value.session.store = promisifyStore(value.session.store);
+  }
+  if (value.backchannelLogout?.store) {
+    value.backchannelLogout.store = promisifyStore(value.backchannelLogout.store);
   }
 
   return value;

@@ -9,6 +9,7 @@ import { TransientCookieHandler } from '../src/transientHandler.js';
 
 import * as legacyCrypto from './helpers/legacy-crypto.js';
 
+/** @returns {any} */
 const reqWithCookies = (cookies) => ({ [COOKIES]: cookies });
 const secret = '__test_session_secret__';
 const defaultConfig = getConfig({
@@ -20,6 +21,11 @@ const defaultConfig = getConfig({
 });
 
 describe('transientHandler', () => {
+  it('defaults session cookie config to empty object when session config is missing', () => {
+    const handler = new TransientCookieHandler({ secret });
+    expect(handler.sessionCookieConfig).to.deep.equal({});
+  });
+
   let res;
   /** @type {TransientCookieHandler} */
   let transientHandler;
@@ -71,11 +77,11 @@ describe('transientHandler', () => {
       });
 
       await transientHandlerHttps.setTransactionCookie(res, 'foo', {
-        sameSite: 'Lax',
+        sameSite: /** @type {any} */ ('Lax'),
       });
 
       await transientHandlerHttp.setTransactionCookie(res, 'foo', {
-        sameSite: 'Lax',
+        sameSite: /** @type {any} */ ('Lax'),
       });
 
       expect(res.cookieCalls).to.have.length(2);
@@ -107,7 +113,7 @@ describe('transientHandler', () => {
     });
 
     it('should set custom SameSite with no fallback', async () => {
-      await transientHandler.setTransactionCookie(res, 'foo', { sameSite: 'Lax' });
+      await transientHandler.setTransactionCookie(res, 'foo', { sameSite: /** @type {any} */ ('Lax') });
 
       expect(res.cookieCalls).to.have.length(1);
 
@@ -141,7 +147,7 @@ describe('transientHandler', () => {
       const transientHandlerHttpsIframe = new TransientCookieHandler({
         ...defaultConfig,
         secret,
-        session: { cookie: { secure: true, sameSite: 'None' } },
+        session: { cookie: { secure: true, sameSite: /** @type {any} */ ('None') } },
         transactionCookie: {
           name: 'test_key',
         },

@@ -13,7 +13,7 @@ const header = { alg: ALG, b64: false, crit: CRITICAL_HEADER_PARAMS };
 
 /**
  * Get current HKDF encryption keys
- * @param {string|string[]} secret secret or secrets
+ * @param {string|Buffer|Array<string|Buffer>} secret secret or secrets
  * @returns {[Buffer, Buffer[]]} tuple with secrets [current, [current, ...]]
  */
 export function getEncryptionKeyStore(secret) {
@@ -24,7 +24,7 @@ export function getEncryptionKeyStore(secret) {
 
 /**
  * Get current HKDF encryption keys
- * @param {string|string[]} secret secret or secrets
+ * @param {string|Buffer|Array<string|Buffer>} secret secret or secrets
  * @returns {[Buffer, Buffer[]]} tuple with secrets [current, [current, ...]]
  */
 export function getSigningKeyStore(secret) {
@@ -132,14 +132,14 @@ async function verifySignature(cookie, value, signature, keystore) {
  * HKDF (HMAC-based Extract-and-Expand Key Derivation Function) defined in RFC 8569.
  *
  * @see https://tools.ietf.org/html/rfc5869
- * @param {string} secret
+ * @param {string|Buffer} secret
  */
 function encryption(secret) {
   return Buffer.from(hkdfSync(DIGEST, secret, Buffer.alloc(0), ENCRYPTION_INFO, BYTE_LENGTH));
 }
 
 /**
- * @param {string} secret
+ * @param {string|Buffer} secret
  */
 function signing(secret) {
   return Buffer.from(hkdfSync(DIGEST, secret, Buffer.alloc(0), SIGNING_INFO, BYTE_LENGTH));

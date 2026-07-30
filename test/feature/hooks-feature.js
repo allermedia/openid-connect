@@ -18,7 +18,7 @@ import { setupDiscovery, setupJwks } from '../helpers/openid-helper.js';
 
       /** @type {import('express').Application} */
       let app;
-      /** @type {request.agent} */
+      /** @type {request.Agent} */
       let agent;
       Given('a client server is setup with after callback hook', () => {
         app = createApp(
@@ -45,7 +45,7 @@ import { setupDiscovery, setupJwks } from '../helpers/openid-helper.js';
         agent = request.agent(app);
       });
 
-      /** @type {import('express').Response} */
+      /** @type {import('supertest').Response} */
       let response;
       let userSub;
       When('user authenticates', async () => {
@@ -137,7 +137,7 @@ import { setupDiscovery, setupJwks } from '../helpers/openid-helper.js';
 
       /** @type {import('express').Application} */
       let app;
-      /** @type {request.agent} */
+      /** @type {request.Agent} */
       let agent;
       Given('a client server is setup with broken after callback hook', () => {
         app = createApp(
@@ -158,7 +158,7 @@ import { setupDiscovery, setupJwks } from '../helpers/openid-helper.js';
         agent = request.agent(app);
       });
 
-      /** @type {import('express').Response} */
+      /** @type {import('supertest').Response} */
       let response;
       let userSub;
       When('user attempts to authenticate', async () => {
@@ -229,7 +229,7 @@ Feature('backchannel logout hooks', () => {
       );
     });
 
-    /** @type {import('express').Response} */
+    /** @type {import('supertest').Response} */
     let response;
     When('openid server calls backchannel logout without required events', async () => {
       response = await request(app)

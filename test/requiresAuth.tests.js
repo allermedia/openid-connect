@@ -52,7 +52,7 @@ describe('requiresAuth', () => {
     const response = await agent.get('/protected').expect(302);
     const state = new URL(response.get('location')).searchParams.get('state');
     const decoded = Buffer.from(state, 'base64');
-    const parsed = JSON.parse(decoded);
+    const parsed = JSON.parse(decoded.toString());
 
     expect(response.statusCode, response.text).to.equal(302);
     expect(response.get('location')).to.include('https://op.example.com');
@@ -170,7 +170,10 @@ describe('requiresAuth', () => {
   });
 
   it('should throw when claim value is a non primitive', () => {
-    expect(() => claimEquals('foo', { bar: 1 })).to.throw(TypeError, '"expected" must be a string, number, boolean or null');
+    expect(() => claimEquals('foo', /** @type {any} */ ({ bar: 1 }))).to.throw(
+      TypeError,
+      '"expected" must be a string, number, boolean or null'
+    );
   });
 
   it('should allow logged in users with all of the requested claims', async () => {
@@ -242,7 +245,7 @@ describe('requiresAuth', () => {
   });
 
   it('should throw when claim value for checking many claims is a non primitive', () => {
-    expect(() => claimIncludes(false, 'bar')).to.throw(TypeError, '"claim" must be a string');
+    expect(() => claimIncludes(/** @type {any} */ (false), 'bar')).to.throw(TypeError, '"claim" must be a string');
   });
 
   it("should return 401 when checking multiple claims and the user doesn't have the claim", async () => {

@@ -82,6 +82,10 @@ export const kid = jwkKey.kid;
 
 // Simple JWT creation for test purposes
 // Creates a properly signed JWT using the test private key
+/**
+ * Make an id token
+ * @param {Record<string, any>} [payload]
+ */
 export async function makeIdToken(payload = {}) {
   const epoch = Math.floor(Date.now() / 1000);
   const mergedPayload = {
@@ -120,6 +124,10 @@ export async function makeIdToken(payload = {}) {
   }
 }
 
+/**
+ * Make a backchannel logout token
+ * @param {{ payload?: Record<string, any>, sid?: string, sub?: string, secret?: string }} [options]
+ */
 export async function makeLogoutToken({ payload = {}, sid, sub, secret } = {}) {
   const header = {
     alg: secret ? 'HS256' : 'RS256',
@@ -164,9 +172,9 @@ export async function makeLogoutToken({ payload = {}, sid, sub, secret } = {}) {
 
 /**
  * Make proper logout token
- * @param {object} options
+ * @param {object} [options]
  * @param {import('jose').JWTPayload} [options.payload]
- * @param {import('jose').JWTHeaderParameters} [options.headers]
+ * @param {Record<string, any>} [options.headers]
  */
 export async function makeProperLogoutToken(options) {
   const privateKey = await importJWK(jwkKey, options?.headers?.alg ?? 'RS256');

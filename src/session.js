@@ -7,7 +7,7 @@ const kClaims = Symbol.for('cached claims');
 export class Session {
   /**
    * @param {Record<string, any>} data
-   * @param {import('types').SessionHeaders} headers
+   * @param {Partial<import('types').SessionHeaders>} headers
    */
   constructor(data, headers) {
     /** @type {import('openid-client').IDToken} */
@@ -52,7 +52,7 @@ export class Session {
      */
     this.decorated = decorated;
 
-    /** @type {import('types').SessionHeaders} */
+    /** @type {Partial<import('types').SessionHeaders>} */
     this.headers = { ...headers };
 
     /** @type {Partial<import('openid-client').IDToken>} */

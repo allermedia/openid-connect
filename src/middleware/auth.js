@@ -5,6 +5,7 @@ import { SESSION } from '../constants.js';
 import { RequestContext, ResponseContext } from '../context.js';
 import Debug from '../debug.js';
 import isLoggedOut from '../hooks/backchannelLogout/isLoggedOut.js';
+import { Store } from '../store.js';
 import { TransientCookieHandler } from '../transientHandler.js';
 
 import appSession from './appSession.js';
@@ -117,18 +118,6 @@ function backchannelIsLoggedOutMiddleware(config, router) {
     const loggedOut = await isLoggedOutFn(req, config);
 
     if (loggedOut) {
-      // @ts-ignore
-      const session = req[config.session.name];
-      // If using external store, try to destroy the session first
-      if (config.session.store && typeof session?.destroy === 'function') {
-        try {
-          session.destroy();
-        } catch {
-          // Ignore errors during session destruction
-        }
-      }
-
-      // Clear the session using replaceSession like it was originally
       req[SESSION] = undefined;
     }
     next();
@@ -136,17 +125,19 @@ function backchannelIsLoggedOutMiddleware(config, router) {
 }
 
 /**
- * Used for instantiating a custom session store. eg
+ * Express-session compatible session store base class, for use with session store
+ * factories that expect the express-session module. eg
  *
  * ```js
- * const { auth } = import('express-openid-connect');
- * const MemoryStore = import('memorystore');
- * const store = MemoryStore(auth);
+ * import { auth } from '@aller/openid-connect';
+ * import memorystore from 'memorystore';
+ *
+ * const MemoryStore = memorystore(auth);
  * ```
  *
  * @constructor
  */
-auth.Store = function Store() {};
+auth.Store = Store;
 
 /**
  * @param {string} path endpoint path

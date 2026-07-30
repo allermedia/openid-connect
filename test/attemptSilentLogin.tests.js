@@ -42,7 +42,7 @@ describe('attemptSilentLogin', () => {
 
     expect(uri.searchParams.get('prompt'), 'prompt').to.equal('none');
 
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })[0]).to.deep.include({
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))[0]).to.deep.include({
       name: 'skipSilentLogin',
       value: 'true',
       noscript: true,

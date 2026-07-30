@@ -8,6 +8,7 @@ export default async function onLogoutToken(token, config) {
     session: { absoluteDuration, rolling: rollingEnabled, rollingDuration, store },
     backchannelLogout,
   } = config;
+  // @ts-ignore
   const backchannelLogoutStore = backchannelLogout?.store || store;
   const maxAge = (rollingEnabled ? Math.min(Number(absoluteDuration), Number(rollingDuration)) : Number(absoluteDuration)) * 1000;
   const payload = {

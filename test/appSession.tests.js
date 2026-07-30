@@ -19,8 +19,6 @@ const defaultConfig = {
   errorOnRequiredAuth: true,
 };
 
-const baseUrl = 'http://localhost:3000';
-
 /**
  * Login with id_token claims
  * @param {import('supertest').Agent} agent
@@ -57,6 +55,18 @@ describe('appSession', () => {
     const server = createApp(appSession(getConfig(defaultConfig)));
     const res = await request(server).get('/session');
     expect(res.body, res.text).to.be.empty;
+  });
+
+  it('should expose session data as named session property on request', async () => {
+    const server = createApp(appSession(getConfig(defaultConfig)));
+    server.get('/named-session', (req, res) => res.json(req.appSession));
+
+    const agent = request.agent(server);
+    await login(agent, { sub: '__named_sub__' });
+
+    const res = await agent.get('/named-session');
+    expect(res.statusCode, res.text).to.equal(200);
+    expect(res.body).to.have.property('sub', '__named_sub__');
   });
 
   it('should not error for malformed sessions', async () => {
@@ -98,7 +108,7 @@ describe('appSession', () => {
       random,
     });
 
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' }).map(({ name }) => name)).to.deep.equal([
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' })).map(({ name }) => name)).to.deep.equal([
       'appSession.0',
       'appSession.1',
     ]);
@@ -156,7 +166,7 @@ describe('appSession', () => {
     agent.jar.setCookie(`appSession=foo; Path=/; HttpOnly; SameSite=Lax`);
 
     const firstCookies = agent.jar
-      .getCookies({ domain: '127.0.0.1', path: '/' })
+      .getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))
       .reduce((obj, value) => Object.assign(obj, { [value.name]: value + '' }), {});
 
     expect(firstCookies).to.have.property('appSession');
@@ -167,7 +177,7 @@ describe('appSession', () => {
     });
 
     const cookies = agent.jar
-      .getCookies({ domain: '127.0.0.1', path: '/' })
+      .getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))
       .reduce((obj, value) => Object.assign(obj, { [value.name]: value + '' }), {});
 
     expect(cookies).to.have.property('appSession.0');
@@ -183,7 +193,7 @@ describe('appSession', () => {
     agent.jar.setCookie(`appSession.1=foo; Path=/; HttpOnly; SameSite=Lax`);
 
     const firstCookies = agent.jar
-      .getCookies({ domain: '127.0.0.1', path: '/' })
+      .getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))
       .reduce((obj, value) => Object.assign(obj, { [value.name]: value + '' }), {});
     expect(firstCookies).to.have.property('appSession.0');
     expect(firstCookies).to.have.property('appSession.1');
@@ -193,7 +203,7 @@ describe('appSession', () => {
     });
 
     const cookies = agent.jar
-      .getCookies({ domain: '127.0.0.1', path: '/' })
+      .getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))
       .reduce((obj, value) => Object.assign(obj, { [value.name]: value + '' }), {});
 
     expect(cookies).to.have.property('appSession');
@@ -217,7 +227,7 @@ describe('appSession', () => {
       agent2.jar.setCookie(c);
     }
 
-    expect(agent2.jar.getCookies({ domain: '127.0.0.1', path: '/' }).map(({ name }) => name)).to.deep.equal([
+    expect(agent2.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' })).map(({ name }) => name)).to.deep.equal([
       'appSession.1',
       'appSession.0',
     ]);
@@ -255,7 +265,7 @@ describe('appSession', () => {
 
     await agent.get('/session').set('cookie', `appSession=${encrypted}`);
 
-    const [cookie] = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+    const [cookie] = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
 
     expect(cookie).to.deep.include({
       name: 'appSession',
@@ -266,7 +276,7 @@ describe('appSession', () => {
     });
 
     const expDate = new Date(cookie.expiration_date);
-    expect(expDate - Date.now()).to.be.approximately(86400000, 5000);
+    expect(expDate.getTime() - Date.now()).to.be.approximately(86400000, 5000);
   });
 
   it('should set the default cookie options over https', async () => {
@@ -276,7 +286,7 @@ describe('appSession', () => {
 
     await agent.get('/session').set('cookie', `appSession=${encrypted}`);
     // Secure cookies not set over http
-    expect(agent.jar.getCookies({ domain: '127.0.0.1', path: '/' })).to.be.empty;
+    expect(agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }))).to.be.empty;
   });
 
   it('should set the custom cookie options', async () => {
@@ -287,7 +297,7 @@ describe('appSession', () => {
           session: {
             cookie: {
               httpOnly: false,
-              sameSite: 'Strict',
+              sameSite: /** @type {any} */ ('Strict'),
             },
           },
         })
@@ -298,7 +308,7 @@ describe('appSession', () => {
 
     await agent.get('/session').set('cookie', `appSession=${encrypted}`);
 
-    const [cookie] = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+    const [cookie] = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
 
     expect(cookie).to.deep.include({
       name: 'appSession',
@@ -343,7 +353,7 @@ describe('appSession', () => {
 
     const res = await agent.get('/session').set('cookie', `customName=${encrypted}`);
 
-    const [cookie] = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+    const [cookie] = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
     expect(res.statusCode, res.text).to.equal(200);
     expect(cookie.name).to.equal('customName');
   });
@@ -362,7 +372,7 @@ describe('appSession', () => {
 
     const res = await agent.get('/session').set('cookie', `appSession=${encrypted}`);
 
-    const [cookie] = agent.jar.getCookies({ domain: '127.0.0.1', path: '/' });
+    const [cookie] = agent.jar.getCookies(/** @type {any} */ ({ domain: '127.0.0.1', path: '/' }));
     expect(res.statusCode, res.text).to.equal(200);
     expect(cookie.expiration_date).to.equal(Infinity);
   });
@@ -406,7 +416,7 @@ describe('appSession', () => {
         }
       });
     });
-    const res = await request(server).get('/session', { baseUrl, json: true });
+    const res = await request(server).get('/session');
 
     expect(res.statusCode, res.text).to.equal(500);
     expect(res.body.err.message).to.equal('session object cannot be reassigned');

@@ -20,6 +20,20 @@ describe('crypto', () => {
 
       expect(freshVerified).to.be.ok;
     });
+
+    it('verify returns undefined when signature has an unexpected length', async () => {
+      const freshVerified = await freshCrypto.verifyCookie('appSession', 'value.YQ', signingKeyStore);
+
+      expect(freshVerified).to.be.undefined;
+    });
+
+    it('verify returns undefined for a well-formed signature that matches no key', async () => {
+      const signedForOtherCookie = await freshCrypto.signCookie('otherCookie', 'value', signingKeyStore[0]);
+
+      const freshVerified = await freshCrypto.verifyCookie('appSession', signedForOtherCookie, [signingKeyStore[0]]);
+
+      expect(freshVerified).to.be.undefined;
+    });
   });
 
   describe('encrypt', () => {
