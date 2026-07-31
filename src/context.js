@@ -1,6 +1,6 @@
 import { strict } from 'node:assert';
 
-import { decodeJwt, createRemoteJWKSet, jwtVerify } from 'jose';
+import { decodeJwt, jwtVerify } from 'jose';
 import { randomNonce, randomPKCECodeVerifier, calculatePKCECodeChallenge } from 'openid-client';
 
 import { encodeState, decodeState } from '../src/hooks/getLoginState.js';
@@ -12,6 +12,7 @@ import { Debug } from './debug.js';
 import { OpenIDConnectBadRequest } from './errors.js';
 import { onLogIn as onLogin } from './hooks/backchannelLogout/onLogIn.js';
 import { onLogoutToken } from './hooks/backchannelLogout/onLogoutToken.js';
+import { getRemoteJWKSet } from './jwks.js';
 import { TokenSetSession } from './session.js';
 
 const debug = Debug('context');
@@ -451,7 +452,7 @@ export class ResponseContext {
           throw new Error('No JWKS URI found in issuer metadata');
         }
 
-        const jwks = createRemoteJWKSet(new URL(jwksUri));
+        const jwks = getRemoteJWKSet(jwksUri);
 
         const { payload, protectedHeader } = await jwtVerify(logoutToken, jwks, {
           issuer: issuer.issuer,

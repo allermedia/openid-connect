@@ -15,6 +15,34 @@ declare module '@aller/openid-connect' {
 		export { Store };
 	}
 	/**
+	 * Returns a middleware that authenticates requests carrying an OAuth2 bearer
+	 * access token (a JWT), for JSON APIs consumed outside the cookie session the
+	 * `auth()` router maintains — e.g. cross-origin AJAX callers or other services.
+	 *
+	 * The token is verified against the issuer's JWKS. The JWKS location is
+	 * resolved from OIDC discovery on first use and cached for the lifetime of the
+	 * middleware instance (a failed discovery is not cached — the next request
+	 * retries). The token must be signed by the issuer, addressed to `audience`,
+	 * and within its validity window.
+	 *
+	 * On success the verified token is exposed as
+	 * `req.bearerAuth = { payload, protectedHeader, token }` and the request
+	 * proceeds. The `requiresAuth` family (`requiresAuth`, `claimEquals`,
+	 * `claimIncludes`, `claimCheck`) recognizes `req.bearerAuth`, so claim checks
+	 * can be chained after this middleware to authorize on the token claims.
+	 * On failure the middleware calls `next()` with an `UnauthorizedError`
+	 * (`statusCode: 401`) whose `headers` carry an RFC 6750 `WWW-Authenticate`
+	 * challenge — pair it with a JSON error handler that applies `err.headers`
+	 * to the response.
+	 *
+	 * With `fallthrough: true` a request without a bearer token continues to the
+	 * next handler unauthenticated (`req.bearerAuth` unset) instead of failing, so
+	 * other auth methods can be chained after this one. A presented-but-invalid
+	 * token is still rejected.
+	 *
+	 * */
+	export function requiresBearerAuth(params: BearerAuthParams): import("express").RequestHandler;
+	/**
 	 * Express-session compatible session store base class.
 	 *
 	 * Session store factories that expect the express-session module can be instantiated
@@ -707,6 +735,29 @@ declare module '@aller/openid-connect' {
 
   interface TokenParameters {
 	[key: string]: unknown;
+  }
+
+  interface BearerAuthParams {
+	/**
+	 * Base URL of the token issuer, e.g. `https://login.microsoftonline.com/{tenant}/v2.0`.
+	 * The JWKS location is resolved from `{issuerBaseURL}/.well-known/openid-configuration`.
+	 */
+	issuerBaseURL: string;
+	/**
+	 * The audience tokens must be addressed to — this API's own identifier.
+	 */
+	audience: string | string[];
+	/**
+	 * Allowed clock skew in seconds when validating token timestamps. Default 60.
+	 */
+	clockTolerance?: number;
+	/**
+	 * When `true` a request without a bearer token continues to the next handler
+	 * unauthenticated (`req.auth` unset) instead of failing with a 401, so other
+	 * auth methods can be chained after this one. A presented-but-invalid token
+	 * is still rejected. Default `false`.
+	 */
+	fallthrough?: boolean;
   }
 
   enum ClientAssertionSigningAlg {

@@ -1,5 +1,5 @@
 import { Request, Response, RequestHandler } from 'express';
-import type { JWK, CryptoKey } from 'jose';
+import type { JWK, CryptoKey, JWTPayload, JWTHeaderParameters } from 'jose';
 import type { KeyObject } from 'node:crypto';
 import { RequestContext, ResponseContext } from '../src/context.js';
 
@@ -10,6 +10,10 @@ declare global {
   namespace Express {
     interface Request {
       oidc: RequestContext;
+      /**
+       * Verified bearer token, set by `requiresBearerAuth()`.
+       */
+      bearerAuth?: BearerAuthContext;
       [x: symbol]: any;
     }
 
@@ -923,6 +927,69 @@ export function auth(params?: ConfigParams): RequestHandler;
  * ```
  */
 export function requiresAuth(requiresLoginCheck?: (req: Request) => boolean): RequestHandler;
+
+interface BearerAuthParams {
+  /**
+   * Base URL of the token issuer, e.g. `https://login.microsoftonline.com/{tenant}/v2.0`.
+   * The JWKS location is resolved from `{issuerBaseURL}/.well-known/openid-configuration`.
+   */
+  issuerBaseURL: string;
+  /**
+   * The audience tokens must be addressed to — this API's own identifier.
+   */
+  audience: string | string[];
+  /**
+   * Allowed clock skew in seconds when validating token timestamps. Default 60.
+   */
+  clockTolerance?: number;
+  /**
+   * When `true` a request without a bearer token continues to the next handler
+   * unauthenticated (`req.auth` unset) instead of failing with a 401, so other
+   * auth methods can be chained after this one. A presented-but-invalid token
+   * is still rejected. Default `false`.
+   */
+  fallthrough?: boolean;
+}
+
+interface BearerAuthContext {
+  /**
+   * The verified JWT claims.
+   */
+  payload: JWTPayload;
+  /**
+   * The verified JWT protected header.
+   */
+  protectedHeader: JWTHeaderParameters;
+  /**
+   * The raw bearer token as presented.
+   */
+  token: string;
+}
+
+/**
+ * Use this MW to protect JSON API routes with an OAuth2 bearer access token (JWT),
+ * independent of the cookie session maintained by `auth()`. Tokens are verified
+ * against the issuer's JWKS (resolved via OIDC discovery and cached) and must match
+ * the given audience. The verified token is exposed as `req.bearerAuth`; failures
+ * call `next()` with an `UnauthorizedError` (`statusCode: 401`) whose `headers`
+ * carry an RFC 6750 `WWW-Authenticate` challenge. With `fallthrough: true`
+ * a request without a bearer token continues unauthenticated, so other auth
+ * methods can be chained after this one. The `requiresAuth` family recognizes
+ * `req.bearerAuth`, so claim checks can be chained to authorize on token claims.
+ *
+ * ```js
+ * import { requiresBearerAuth } from '@aller/openid-connect';
+ *
+ * app.get(
+ *   '/api/resource',
+ *   requiresBearerAuth({ issuerBaseURL: 'https://op.example.com', audience: 'api://my-api' }),
+ *   (req, res) => {
+ *     res.json({ sub: req.bearerAuth.payload.sub });
+ *   }
+ * );
+ * ```
+ */
+export function requiresBearerAuth(params: BearerAuthParams): RequestHandler;
 
 /**
  * Use this MW to protect a route based on the value of a specific claim.

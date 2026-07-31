@@ -1,5 +1,12 @@
 # Change Log
 
+## v0.2.0 (2026-07-31)
+
+### Additions
+
+- `requiresBearerAuth({ issuerBaseURL, audience, clockTolerance?, fallthrough? })` middleware protects JSON API routes with an issuer/JWKS-verified OAuth2 bearer access token (JWT), independent of the `auth()` cookie session. Verified claims land on `req.bearerAuth`; failures raise `UnauthorizedError` (401) carrying an RFC 6750 `WWW-Authenticate` challenge in `err.headers`. `fallthrough: true` lets requests without a bearer token continue unauthenticated so other auth methods can be chained
+- `requiresAuth`, `claimEquals`, `claimIncludes` and `claimCheck` recognize bearer-authenticated requests, so claim checks can be chained after `requiresBearerAuth` — bearer token claims take precedence over session id_token claims when both are present
+
 ## v0.1.0 (2026-07-30)
 
 ### Breaking

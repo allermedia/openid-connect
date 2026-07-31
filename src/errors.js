@@ -26,9 +26,11 @@ export class OpenIDConnectBadRequest extends Error {
 export class UnauthorizedError extends Error {
   /**
    * @param {string} msg
+   * @param {Record<string, string>} [headers] response headers the error handler should apply, e.g. a `WWW-Authenticate` challenge
    */
-  constructor(msg) {
+  constructor(msg, headers) {
     super(msg);
     this.statusCode = 401;
+    this.headers = headers || {};
   }
 }

@@ -6,24 +6,26 @@ const debug = Debug('requiresAuth');
 /**
  * Returns a middleware that checks whether an end-user is authenticated.
  * If end-user is not authenticated `res.oidc.login()` is triggered for an HTTP
- * request that can perform a redirect.
+ * request that can perform a redirect. A request authenticated by
+ * `requiresBearerAuth()` (`req.bearerAuth`) also satisfies the checks, so
+ * claim checks can be chained after that middleware.
  * @param {CallableFunction} requiresLoginCheck
  * @param {import('express').Request} req
  * @param {import('express').Response} res
  * @param {import('express').NextFunction} next
  */
 function requiresLoginMiddleware(requiresLoginCheck, req, res, next) {
-  if (!req.oidc) {
+  if (!req.oidc && !req.bearerAuth) {
     next(new Error('req.oidc is not found, did you include the auth middleware?'));
     return;
   }
 
   if (requiresLoginCheck(req)) {
-    if (!res.oidc.errorOnRequiredAuth && req.accepts('html')) {
+    if (res.oidc && !res.oidc.errorOnRequiredAuth && req.accepts('html')) {
       debug('authentication requirements not met with errorOnRequiredAuth() returning false, calling res.oidc.login()');
       return res.oidc.login();
     }
-    debug('authentication requirements not met with errorOnRequiredAuth() returning true, calling next() with an Unauthorized error');
+    debug('authentication requirements not met, calling next() with an Unauthorized error');
     next(new UnauthorizedError('Authentication is required for this route.'));
     return;
   }
@@ -57,7 +59,7 @@ export function claimEquals(claim, expected) {
     if (defaultRequiresLogin(req)) {
       return true;
     }
-    const { idTokenClaims } = req.oidc;
+    const idTokenClaims = authenticatedClaims(req);
     if (!(claim in idTokenClaims)) {
       return true;
     }
@@ -92,7 +94,7 @@ export function claimIncludes(claim, ...expected) {
       return true;
     }
 
-    const { idTokenClaims } = req.oidc;
+    const idTokenClaims = authenticatedClaims(req);
     if (!(claim in idTokenClaims)) {
       return true;
     }
@@ -131,9 +133,7 @@ export function claimCheck(func) {
       return true;
     }
 
-    const { idTokenClaims } = req.oidc;
-
-    return !func(req, idTokenClaims);
+    return !func(req, authenticatedClaims(req));
   }
 
   return requiresLoginMiddleware.bind(undefined, authenticationCheck);
@@ -143,7 +143,20 @@ export function claimCheck(func) {
  * @param {import('express').Request} req
  */
 function defaultRequiresLogin(req) {
+  if (req.bearerAuth) {
+    return false;
+  }
   return !req.oidc.isAuthenticated();
+}
+
+/**
+ * Claims for the authenticated identity — the verified bearer token payload
+ * when `requiresBearerAuth()` authenticated the request (which takes
+ * precedence), else the session's id_token claims.
+ * @param {import('express').Request} req
+ */
+function authenticatedClaims(req) {
+  return req.bearerAuth ? req.bearerAuth.payload : req.oidc.idTokenClaims;
 }
 
 /**
