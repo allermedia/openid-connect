@@ -1,4 +1,4 @@
-import { auth, requiresAuth, claimEquals, claimIncludes, claimCheck, ForbiddenError } from '@aller/openid-connect';
+import { auth, requiresAuth, claimEquals, claimIncludes, claimIncludesAny, claimCheck, ForbiddenError } from '@aller/openid-connect';
 import nock from 'nock';
 import request from 'supertest';
 
@@ -707,6 +707,121 @@ describe('requiresAuth', () => {
 
       expect(response.statusCode, response.text).to.equal(403);
       expect(response.body.err.reason).to.deep.equal({ claim: 'roles', expected: ['admin', 'finance'], actual: ['Admin'] });
+    });
+  });
+
+  describe('claimIncludesAny', () => {
+    it('allows a user holding at least one of the values', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludesAny('roles', 'Admin', 'Finance')
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { roles: ['Finance', 'User'] });
+      expect((await agent.get('/protected')).statusCode).to.equal(200);
+
+      await login(agent, { roles: 'User Admin' });
+      expect((await agent.get('/protected')).statusCode).to.equal(200);
+    });
+
+    it('rejects a user holding none of the values with 403', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludesAny('roles', 'Admin', 'Finance')
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { roles: ['User'] });
+      const response = await agent.get('/protected').set('accept', 'text/html');
+
+      expect(response.statusCode, response.text).to.equal(403);
+      expect(response.get('location')).to.be.undefined;
+      expect(response.body.err.message).to.equal('Insufficient claim "roles"');
+      expect(response.body.err.reason).to.deep.equal({ claim: 'roles', expected: ['Admin', 'Finance'], actual: ['User'] });
+    });
+
+    it('rejects a missing claim with 403', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludesAny('roles', 'Admin')
+      );
+      const agent = request.agent(server);
+
+      await login(agent);
+      const response = await agent.get('/protected');
+
+      expect(response.statusCode, response.text).to.equal(403);
+      expect(response.body.err.message).to.equal('Missing claim "roles"');
+    });
+
+    it('rejects a claim that is neither string nor array', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludesAny('roles', 'Admin')
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { roles: 42 });
+      const response = await agent.get('/protected');
+
+      expect(response.statusCode, response.text).to.equal(403);
+      expect(response.body.err.reason).to.deep.equal({ claim: 'roles', expected: ['Admin'], actual: 42 });
+    });
+
+    it('supports ignoreCase and trim', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludesAny('roles', 'admin', 'finance', { ignoreCase: true, trim: true })
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { roles: '  user   FINANCE ' });
+      expect((await agent.get('/protected')).statusCode).to.equal(200);
+    });
+
+    it('treats anonymous users as requiresAuth does', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludesAny('roles', 'Admin')
+      );
+      const agent = request.agent(server);
+
+      const redirect = await agent.get('/protected').set('accept', 'text/html');
+      expect(redirect.statusCode).to.equal(302);
+
+      const errorServer = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludesAny('roles', 'Admin', { errorOnRequiredAuth: true })
+      );
+      const unauthorized = await request.agent(errorServer).get('/protected').set('accept', 'text/html');
+      expect(unauthorized.statusCode).to.equal(401);
+    });
+
+    it('validates arguments like claimIncludes', () => {
+      expect(() => claimIncludesAny(/** @type {any} */ (1), 'x')).to.throw(TypeError, '"claim" must be a string');
+      expect(() => claimIncludesAny('roles', /** @type {any} */ ([]))).to.throw(TypeError, '"expected" must be');
     });
   });
 });

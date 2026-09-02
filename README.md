@@ -75,9 +75,9 @@ api.use((err, req, res, next) => {
 
 `claimEquals`, `claimIncludes` and `claimCheck` separate authentication from authorization. An anonymous request is handled as by `requiresAuth` — a login redirect, or a 401 `UnauthorizedError` with `errorOnRequiredAuth`. An authenticated request that fails the claim check calls `next()` with a `ForbiddenError` (`statusCode: 403`) — never a login redirect, since the identity provider would just send the user straight back with the same claims. `err.reason` carries what failed as `{ claim, expected, actual }`, where `actual` is `undefined` when the claim is missing altogether, so a "no role assigned" page can be told apart from a "wrong role" one.
 
-`claimIncludes(claim, ...values)` has AND semantics: every listed value must be present in the claim, which may be an array or a space separated string. There is no OR variant — for "any of these roles" use `claimCheck` with a predicate like the `/billing` route below.
+`claimIncludes(claim, ...values)` has AND semantics: every listed value must be present in the claim, which may be an array or a space separated string. `claimIncludesAny(claim, ...values)` is the OR variant: at least one listed value must be present. Anything more involved goes in a `claimCheck` predicate.
 
-Claim values are matched exactly, including case, since scopes and roles are opaque strings to the identity provider. For claims where case does not matter, e.g. email addresses, pass `{ ignoreCase: true }` to `claimEquals` or `claimIncludes` — string values are then compared case insensitively. `{ trim: true }` strips surrounding whitespace from string values and splits a space separated claim on runs of whitespace. Both flags leave numbers, booleans and null strict, and `err.reason` still reports the original values.
+Claim values are matched exactly, including case, since scopes and roles are opaque strings to the identity provider. For claims where case does not matter, e.g. email addresses, pass `{ ignoreCase: true }` to `claimEquals`, `claimIncludes` or `claimIncludesAny` — string values are then compared case insensitively. `{ trim: true }` strips surrounding whitespace from string values and splits a space separated claim on runs of whitespace. Both flags leave numbers, booleans and null strict, and `err.reason` still reports the original values.
 
 A `claimCheck` predicate is only called for authenticated requests. It returns a truthy value to allow the request, a falsy value to reject it with a generic `ForbiddenError`, or an `Error` — e.g. a `ForbiddenError` with a custom `reason` — to reject it with that error.
 
@@ -86,7 +86,7 @@ A `claimCheck` predicate is only called for authenticated requests. It returns a
 ```javascript
 import express from 'express';
 
-import { auth, requiresAuth, claimIncludes, claimCheck, ForbiddenError } from '@aller/openid-connect';
+import { auth, requiresAuth, claimIncludes, claimIncludesAny, claimCheck, ForbiddenError } from '@aller/openid-connect';
 
 const app = express();
 
@@ -110,10 +110,7 @@ app.get('/audit', claimIncludes('roles', 'Admin', 'Auditor'), (req, res) => {
   res.send('audit content'); // AND: both roles are required
 });
 
-const hasAnyRole = (...roles) =>
-  claimCheck((req, claims) => Array.isArray(claims.roles) && roles.some((role) => claims.roles.includes(role)));
-
-app.get('/billing', hasAnyRole('Admin', 'Finance'), (req, res) => {
+app.get('/billing', claimIncludesAny('roles', 'Admin', 'Finance'), (req, res) => {
   res.send('billing content'); // OR: either role is enough
 });
 

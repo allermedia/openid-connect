@@ -72,6 +72,13 @@ declare module '@aller/openid-connect' {
 	 * */
 	export function claimIncludes(claim: string, ...args: (string | number | boolean | null | RequiresAuthOptions)[]): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
 	/**
+	 * ID token claim includes any — at least one expected value must be present
+	 * in the claim (an array or a space separated string). Comparison is strict
+	 * unless `options.ignoreCase` and/or `options.trim` are set. Pass an options
+	 * object as the last argument.
+	 * */
+	export function claimIncludesAny(claim: string, ...args: (string | number | boolean | null | RequiresAuthOptions)[]): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
+	/**
 	 * Custom claim check. The check function is only called for an authenticated
 	 * request. Return a truthy value to allow the request, a falsy value to reject
 	 * it with a `ForbiddenError`, or an `Error` (e.g. a `ForbiddenError` carrying a
@@ -640,13 +647,13 @@ declare module '@aller/openid-connect' {
 	 */
 	errorOnRequiredAuth?: boolean;
 	/**
-	 * `claimEquals` and `claimIncludes` only: compare string values case
+	 * `claimEquals`, `claimIncludes` and `claimIncludesAny` only: compare string values case
 	 * insensitively. Numbers, booleans and null are still matched strictly, and
 	 * `ForbiddenError#reason` reports the original values. Default `false`.
 	 */
 	ignoreCase?: boolean;
 	/**
-	 * `claimEquals` and `claimIncludes` only: trim surrounding whitespace from
+	 * `claimEquals`, `claimIncludes` and `claimIncludesAny` only: trim surrounding whitespace from
 	 * string values before comparing. A space separated claim is then also split
 	 * on runs of whitespace. Other types are matched strictly, and
 	 * `ForbiddenError#reason` reports the original values. Default `false`.

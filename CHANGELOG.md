@@ -1,5 +1,11 @@
 # Change Log
 
+## v0.3.1 (2026-09-02)
+
+### Additions
+
+- `claimIncludesAny(claim, ...values, options?)` — the OR counterpart of `claimIncludes`: at least one of the values must be present in the claim. Same 403 behaviour, `err.reason` and `ignoreCase`/`trim` options
+
 ## v0.3.0 (2026-09-02)
 
 ### Breaking

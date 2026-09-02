@@ -692,13 +692,13 @@ interface RequiresAuthOptions {
    */
   errorOnRequiredAuth?: boolean;
   /**
-   * `claimEquals` and `claimIncludes` only: compare string values case
+   * `claimEquals`, `claimIncludes` and `claimIncludesAny` only: compare string values case
    * insensitively. Numbers, booleans and null are still matched strictly, and
    * `ForbiddenError#reason` reports the original values. Default `false`.
    */
   ignoreCase?: boolean;
   /**
-   * `claimEquals` and `claimIncludes` only: trim surrounding whitespace from
+   * `claimEquals`, `claimIncludes` and `claimIncludesAny` only: trim surrounding whitespace from
    * string values before comparing. A space separated claim is then also split
    * on runs of whitespace. Other types are matched strictly, and
    * `ForbiddenError#reason` reports the original values. Default `false`.
@@ -1077,6 +1077,26 @@ export function claimEquals(claim: string, value: boolean | number | string | nu
  * @param args Claim values that must all be included, optionally followed by per-middleware options
  */
 export function claimIncludes(claim: string, ...args: (boolean | number | string | null | RequiresAuthOptions)[]): RequestHandler;
+
+/**
+ * Use this MW to protect a route, checking that _at least one_ of the values is in a claim.
+ * An anonymous request is treated as by `requiresAuth`, an authenticated
+ * request that fails the check calls `next()` with a `ForbiddenError` (403)
+ * carrying `{ claim, expected, actual }` as `reason`.
+ *
+ * ```js
+ * const { claimIncludesAny } = require('express-openid-connect');
+ *
+ * app.get('/billing', claimIncludesAny('roles', 'admin', 'finance'), (req, res) => {
+ *   res.send(...);
+ * });
+ *
+ * ```
+ *
+ * @param claim The name of the claim
+ * @param args Claim values of which at least one must be included, optionally followed by per-middleware options
+ */
+export function claimIncludesAny(claim: string, ...args: (boolean | number | string | null | RequiresAuthOptions)[]): RequestHandler;
 
 /**
  * Use this MW to protect a route, providing a custom function to check.

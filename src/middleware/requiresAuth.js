@@ -108,6 +108,28 @@ export function claimEquals(claim, expected, options) {
  * @param  {...(string|number|boolean|null|import('types').RequiresAuthOptions)} args
  */
 export function claimIncludes(claim, ...args) {
+  return claimIncludesMiddleware('every', claim, args);
+}
+
+/**
+ * ID token claim includes any — at least one expected value must be present
+ * in the claim (an array or a space separated string). Comparison is strict
+ * unless `options.ignoreCase` and/or `options.trim` are set. Pass an options
+ * object as the last argument.
+ * @param {string} claim
+ * @param  {...(string|number|boolean|null|import('types').RequiresAuthOptions)} args
+ */
+export function claimIncludesAny(claim, ...args) {
+  return claimIncludesMiddleware('some', claim, args);
+}
+
+/**
+ * Shared implementation of `claimIncludes` (`every`) and `claimIncludesAny` (`some`)
+ * @param {'every'|'some'} mode
+ * @param {string} claim
+ * @param {(string|number|boolean|null|import('types').RequiresAuthOptions)[]} args
+ */
+function claimIncludesMiddleware(mode, claim, args) {
   // check that claim is a string value
   if (typeof claim !== 'string') {
     throw new TypeError('"claim" must be a string');
@@ -115,7 +137,7 @@ export function claimIncludes(claim, ...args) {
   /** @type {import('types').RequiresAuthOptions} */
   let options = {};
   const last = args[args.length - 1];
-  if (typeof last === 'object' && last !== null) {
+  if (typeof last === 'object' && last !== null && !Array.isArray(last)) {
     options = last;
     args = args.slice(0, -1);
   }
@@ -144,7 +166,7 @@ export function claimIncludes(claim, ...args) {
     }
 
     const actualSet = new Set(actualList.map((value) => fold(value, options)));
-    if (!expected.every((value) => actualSet.has(fold(value, options)))) {
+    if (!expected[mode]((value) => actualSet.has(fold(value, options)))) {
       return new ForbiddenError(`Insufficient claim "${claim}"`, { claim, expected, actual });
     }
   }
