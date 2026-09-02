@@ -1,5 +1,19 @@
 # Change Log
 
+## v0.3.0 (2026-09-02)
+
+### Breaking
+
+- `claimEquals`, `claimIncludes` and `claimCheck` now separate authentication from authorization: an anonymous request is still redirected to login (or answered 401 with `errorOnRequiredAuth`), but an authenticated request that fails the claim check calls `next()` with a `ForbiddenError` (403) instead of triggering login — the old behaviour looped between the app and the identity provider for signed-in users lacking the claim, e.g. Entra users without an app role. Apps that mapped these failures to 401 should handle 403 as well
+
+### Additions
+
+- `ForbiddenError` (`statusCode: 403`) is exported. Its `reason` holds `{ claim, expected, actual }` for the built-in claim checks, with `actual: undefined` when the claim is missing, so a missing claim can be told apart from a wrong value
+- a `claimCheck` predicate may return an `Error` (e.g. a `ForbiddenError` with a custom `reason`) to reject the request with that error
+- `errorOnRequiredAuth` can be overridden per middleware: `requiresAuth({ errorOnRequiredAuth: true })`, `requiresAuth(check, options)`, `claimEquals(claim, value, options)`, `claimIncludes(claim, ...values, options)` and `claimCheck(fn, options)`
+- `{ ignoreCase: true }` makes `claimEquals` and `claimIncludes` compare string values case insensitively, `{ trim: true }` strips surrounding whitespace and splits space separated claims on runs of whitespace; other types stay strict and `err.reason` reports the original values
+- `UnauthorizedError` is exported
+
 ## v0.2.0 (2026-07-31)
 
 ### Additions

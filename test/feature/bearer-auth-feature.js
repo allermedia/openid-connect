@@ -348,8 +348,9 @@ Feature('Bearer authentication', () => {
       response = await request(app).get('/api/admin').set('authorization', `Bearer ${token}`);
     });
 
-    Then('it is rejected with 401', () => {
-      expect(response.status).to.equal(401);
+    Then('it is rejected with 403 since the caller is authenticated but not authorized', () => {
+      expect(response.status).to.equal(403);
+      expect(response.body.message).to.equal('Missing claim "role"');
     });
 
     When('a token whose space-delimited permissions include read requests the claimIncludes route', async () => {
@@ -366,8 +367,8 @@ Feature('Bearer authentication', () => {
       response = await request(app).get('/api/custom').set('authorization', `Bearer ${token}`);
     });
 
-    Then('it is rejected with 401 by the custom check', () => {
-      expect(response.status).to.equal(401);
+    Then('it is rejected with 403 by the custom check', () => {
+      expect(response.status).to.equal(403);
     });
   });
 

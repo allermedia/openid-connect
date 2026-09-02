@@ -71,6 +71,78 @@ api.use((err, req, res, next) => {
 });
 ```
 
+## Authorization with claim checks
+
+`claimEquals`, `claimIncludes` and `claimCheck` separate authentication from authorization. An anonymous request is handled as by `requiresAuth` — a login redirect, or a 401 `UnauthorizedError` with `errorOnRequiredAuth`. An authenticated request that fails the claim check calls `next()` with a `ForbiddenError` (`statusCode: 403`) — never a login redirect, since the identity provider would just send the user straight back with the same claims. `err.reason` carries what failed as `{ claim, expected, actual }`, where `actual` is `undefined` when the claim is missing altogether, so a "no role assigned" page can be told apart from a "wrong role" one.
+
+`claimIncludes(claim, ...values)` has AND semantics: every listed value must be present in the claim, which may be an array or a space separated string. There is no OR variant — for "any of these roles" use `claimCheck` with a predicate like the `/billing` route below.
+
+Claim values are matched exactly, including case, since scopes and roles are opaque strings to the identity provider. For claims where case does not matter, e.g. email addresses, pass `{ ignoreCase: true }` to `claimEquals` or `claimIncludes` — string values are then compared case insensitively. `{ trim: true }` strips surrounding whitespace from string values and splits a space separated claim on runs of whitespace. Both flags leave numbers, booleans and null strict, and `err.reason` still reports the original values.
+
+A `claimCheck` predicate is only called for authenticated requests. It returns a truthy value to allow the request, a falsy value to reject it with a generic `ForbiddenError`, or an `Error` — e.g. a `ForbiddenError` with a custom `reason` — to reject it with that error.
+
+`errorOnRequiredAuth` can also be set per middleware, so a single route can answer 401 instead of redirecting without flipping the global option for `requiresAuth`.
+
+```javascript
+import express from 'express';
+
+import { auth, requiresAuth, claimIncludes, claimCheck, ForbiddenError } from '@aller/openid-connect';
+
+const app = express();
+
+app.use(
+  auth({
+    baseURL: 'autodetect',
+    secret: 'supers3cret',
+    clientID: 'insecure-client-id',
+    issuerBaseURL: 'https://op.example.com',
+    authRequired: false,
+  })
+);
+
+app.use(requiresAuth()); // anonymous → login redirect
+
+app.get('/admin', claimIncludes('roles', 'Admin'), (req, res) => {
+  res.send('admin content'); // signed in without the role → 403
+});
+
+app.get('/audit', claimIncludes('roles', 'Admin', 'Auditor'), (req, res) => {
+  res.send('audit content'); // AND: both roles are required
+});
+
+const hasAnyRole = (...roles) =>
+  claimCheck((req, claims) => Array.isArray(claims.roles) && roles.some((role) => claims.roles.includes(role)));
+
+app.get('/billing', hasAnyRole('Admin', 'Finance'), (req, res) => {
+  res.send('billing content'); // OR: either role is enough
+});
+
+app.get(
+  '/support',
+  claimCheck((req, claims) => {
+    if (Array.isArray(claims.roles) && claims.roles.includes('Support')) return true;
+    return new ForbiddenError('Support role required', { claim: 'roles', expected: ['Support'], actual: claims.roles });
+  }),
+  (req, res) => {
+    res.send('support content');
+  }
+);
+
+app.get('/staff', claimIncludes('email', 'jane@example.org', { ignoreCase: true, trim: true }), (req, res) => {
+  res.send('staff content'); // " Jane@Example.org " is fine too
+});
+
+app.get('/api/me', requiresAuth({ errorOnRequiredAuth: true }), (req, res) => {
+  res.json(req.oidc.user); // anonymous → 401 instead of a redirect
+});
+
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err.statusCode === 403) return res.status(403).send(`Forbidden: ${err.message} ${JSON.stringify(err.reason)}`);
+  res.status(err.statusCode || 500).send(err.message);
+});
+```
+
 ## Differences from `express-openid-connect`
 
 Compared against `express-openid-connect` v3, which is built on the same `openid-client` v6 / `jose` v6 stack:

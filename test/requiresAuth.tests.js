@@ -1,4 +1,4 @@
-import { auth, requiresAuth, claimEquals, claimIncludes, claimCheck } from '@aller/openid-connect';
+import { auth, requiresAuth, claimEquals, claimIncludes, claimCheck, ForbiddenError } from '@aller/openid-connect';
 import nock from 'nock';
 import request from 'supertest';
 
@@ -115,7 +115,7 @@ describe('requiresAuth', () => {
     expect(response.statusCode, response.text).to.equal(200);
   });
 
-  it("should return 401 when logged in user doesn't have the right value for claim", async () => {
+  it("should return 403 when logged in user doesn't have the right value for claim", async () => {
     const server = createApp(
       auth({
         ...defaultConfig,
@@ -129,10 +129,13 @@ describe('requiresAuth', () => {
     await login(agent, { foo: 'baz' });
     const response = await agent.get('/protected');
 
-    expect(response.statusCode, response.text).to.equal(401);
+    expect(response.statusCode, response.text).to.equal(403);
+    expect(response.get('location')).to.be.undefined;
+    expect(response.body.err.message).to.equal('Insufficient claim "foo"');
+    expect(response.body.err.reason).to.deep.equal({ claim: 'foo', expected: 'bar', actual: 'baz' });
   });
 
-  it("should return 401 when logged in user doesn't have the claim", async () => {
+  it("should return 403 when logged in user doesn't have the claim", async () => {
     const server = createApp(
       auth({
         ...defaultConfig,
@@ -146,7 +149,10 @@ describe('requiresAuth', () => {
     await login(agent, { foo: 'bar' });
     const response = await agent.get('/protected');
 
-    expect(response.statusCode, response.text).to.equal(401);
+    expect(response.statusCode, response.text).to.equal(403);
+    expect(response.get('location')).to.be.undefined;
+    expect(response.body.err.message).to.equal('Missing claim "baz"');
+    expect(response.body.err.reason).to.deep.equal({ claim: 'baz', expected: 'bar' });
   });
 
   it("should return 401 when anonymous user doesn't have the right claim", async () => {
@@ -166,7 +172,7 @@ describe('requiresAuth', () => {
   });
 
   it('should throw when claim is not a string', () => {
-    expect(() => claimEquals(true, 'bar')).to.throw(TypeError, '"claim" must be a string');
+    expect(() => claimEquals(/** @type {any} */ (true), 'bar')).to.throw(TypeError, '"claim" must be a string');
   });
 
   it('should throw when claim value is a non primitive', () => {
@@ -193,7 +199,7 @@ describe('requiresAuth', () => {
     expect(response.statusCode, response.text).to.equal(200);
   });
 
-  it('should return 401 for logged with some of the requested claims', async () => {
+  it('should return 403 for logged with some of the requested claims', async () => {
     const server = createApp(
       auth({
         ...defaultConfig,
@@ -207,7 +213,8 @@ describe('requiresAuth', () => {
     await login(agent, { foo: 'baz bar' });
     const response = await agent.get('/protected');
 
-    expect(response.statusCode, response.text).to.equal(401);
+    expect(response.statusCode, response.text).to.equal(403);
+    expect(response.body.err.reason).to.deep.equal({ claim: 'foo', expected: ['bar', 'baz', 'qux'], actual: 'baz bar' });
   });
 
   it('should accept claim values as a space separated list', async () => {
@@ -241,14 +248,15 @@ describe('requiresAuth', () => {
     await login(agent, { foo: { bar: 'baz' } });
     const response = await agent.get('/protected');
 
-    expect(response.statusCode, response.text).to.equal(401);
+    expect(response.statusCode, response.text).to.equal(403);
+    expect(response.body.err.reason).to.deep.equal({ claim: 'foo', expected: ['bar', 'baz'], actual: { bar: 'baz' } });
   });
 
   it('should throw when claim value for checking many claims is a non primitive', () => {
     expect(() => claimIncludes(/** @type {any} */ (false), 'bar')).to.throw(TypeError, '"claim" must be a string');
   });
 
-  it("should return 401 when checking multiple claims and the user doesn't have the claim", async () => {
+  it("should return 403 when checking multiple claims and the user doesn't have the claim", async () => {
     const server = createApp(
       auth({
         ...defaultConfig,
@@ -262,7 +270,7 @@ describe('requiresAuth', () => {
     await login(agent, { bar: 'bar baz' });
     const response = await agent.get('/protected');
 
-    expect(response.statusCode, response.text).to.equal(401);
+    expect(response.statusCode, response.text).to.equal(403);
   });
 
   it('should return 401 when checking many claims with anonymous user', async () => {
@@ -314,7 +322,8 @@ describe('requiresAuth', () => {
     await login(agent);
     const response = await agent.get('/protected');
 
-    expect(response.statusCode, response.text).to.equal(401);
+    expect(response.statusCode, response.text).to.equal(403);
+    expect(response.body.err.message).to.equal('Insufficient claims');
   });
 
   it('should make the token claims available to custom check', async () => {
@@ -353,5 +362,351 @@ describe('requiresAuth', () => {
 
     expect(response.statusCode, response.text).to.equal(401);
     expect(claimChecksCounter).to.equal(0);
+  });
+
+  it('should pass the error returned by a custom claim check to next', async () => {
+    const server = createApp(
+      auth({
+        ...defaultConfig,
+        authRequired: false,
+      }),
+      claimCheck((_req, claims) => {
+        if (Array.isArray(claims.roles) && claims.roles.includes('Support')) return true;
+        return new ForbiddenError('Support role required', { claim: 'roles', expected: ['Support'], actual: claims.roles });
+      })
+    );
+    const agent = request.agent(server);
+
+    await login(agent, { roles: ['User'] });
+    const response = await agent.get('/protected');
+
+    expect(response.statusCode, response.text).to.equal(403);
+    expect(response.body.err.message).to.equal('Support role required');
+    expect(response.body.err.reason).to.deep.equal({ claim: 'roles', expected: ['Support'], actual: ['User'] });
+  });
+
+  describe('authenticated user failing a claim check', () => {
+    it('is answered with 403 and no redirect even if the request accepts html', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludes('roles', 'Admin')
+      );
+      const agent = request.agent(server);
+
+      await login(agent);
+      const response = await agent.get('/protected').set('accept', 'text/html');
+
+      expect(response.statusCode, response.text).to.equal(403);
+      expect(response.get('location')).to.be.undefined;
+      expect(response.body.err.message).to.equal('Missing claim "roles"');
+    });
+
+    it('is answered with 403 when the claim is present but wrong', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludes('roles', 'Admin')
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { roles: ['User'] });
+      const response = await agent.get('/protected').set('accept', 'text/html');
+
+      expect(response.statusCode, response.text).to.equal(403);
+      expect(response.get('location')).to.be.undefined;
+      expect(response.body.err.reason).to.deep.equal({ claim: 'roles', expected: ['Admin'], actual: ['User'] });
+    });
+
+    it('is answered with 403 for claimEquals and claimCheck as well', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimEquals('foo', 'bar')
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { foo: 'baz' });
+      expect((await agent.get('/protected').set('accept', 'text/html')).statusCode).to.equal(403);
+
+      const customServer = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimCheck(() => false)
+      );
+      const customAgent = request.agent(customServer);
+      await login(customAgent);
+      expect((await customAgent.get('/protected').set('accept', 'text/html')).statusCode).to.equal(403);
+    });
+
+    it('still redirects anonymous users to login', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludes('roles', 'Admin')
+      );
+      const agent = request.agent(server);
+
+      const response = await agent.get('/protected').set('accept', 'text/html');
+
+      expect(response.statusCode, response.text).to.equal(302);
+      expect(response.get('location')).to.include('https://op.example.com');
+    });
+  });
+
+  describe('per-middleware errorOnRequiredAuth', () => {
+    it('requiresAuth({ errorOnRequiredAuth: true }) answers anonymous users with 401 instead of redirecting', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        requiresAuth({ errorOnRequiredAuth: true })
+      );
+      const agent = request.agent(server);
+
+      const response = await agent.get('/protected').set('accept', 'text/html');
+
+      expect(response.statusCode, response.text).to.equal(401);
+      expect(response.get('location')).to.be.undefined;
+    });
+
+    it('requiresAuth(check, { errorOnRequiredAuth: true }) combines a custom check with options', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        requiresAuth(() => true, { errorOnRequiredAuth: true })
+      );
+      const agent = request.agent(server);
+
+      await login(agent);
+      const response = await agent.get('/protected').set('accept', 'text/html');
+
+      expect(response.statusCode, response.text).to.equal(401);
+    });
+
+    it('requiresAuth({ errorOnRequiredAuth: false }) redirects even when the global option is true', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+          errorOnRequiredAuth: true,
+        }),
+        requiresAuth({ errorOnRequiredAuth: false })
+      );
+      const agent = request.agent(server);
+
+      const response = await agent.get('/protected').set('accept', 'text/html');
+
+      expect(response.statusCode, response.text).to.equal(302);
+    });
+
+    it('claimEquals accepts options as third argument', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimEquals('foo', 'bar', { errorOnRequiredAuth: true })
+      );
+      const agent = request.agent(server);
+
+      const response = await agent.get('/protected').set('accept', 'text/html');
+
+      expect(response.statusCode, response.text).to.equal(401);
+    });
+
+    it('claimIncludes accepts options as last argument', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludes('roles', 'Support', { errorOnRequiredAuth: true })
+      );
+      const agent = request.agent(server);
+
+      const anonymous = await agent.get('/protected').set('accept', 'text/html');
+      expect(anonymous.statusCode, anonymous.text).to.equal(401);
+
+      await login(agent, { roles: ['Support'] });
+      const authorized = await agent.get('/protected');
+      expect(authorized.statusCode, authorized.text).to.equal(200);
+    });
+
+    it('claimCheck accepts options as second argument', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimCheck(() => true, { errorOnRequiredAuth: true })
+      );
+      const agent = request.agent(server);
+
+      const response = await agent.get('/protected').set('accept', 'text/html');
+
+      expect(response.statusCode, response.text).to.equal(401);
+    });
+  });
+
+  describe('ignoreCase and trim', () => {
+    it('claimEquals matches string values case insensitively', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimEquals('email', 'jane@example.org', { ignoreCase: true })
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { email: 'Jane@Example.org' });
+      const response = await agent.get('/protected');
+
+      expect(response.statusCode, response.text).to.equal(200);
+    });
+
+    it('claimEquals is case sensitive by default', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimEquals('email', 'jane@example.org')
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { email: 'Jane@Example.org' });
+      const response = await agent.get('/protected');
+
+      expect(response.statusCode, response.text).to.equal(403);
+    });
+
+    it('claimEquals keeps non-string values strict', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimEquals('level', 1, { ignoreCase: true })
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { level: '1' });
+      const response = await agent.get('/protected');
+
+      expect(response.statusCode, response.text).to.equal(403);
+      expect(response.body.err.reason).to.deep.equal({ claim: 'level', expected: 1, actual: '1' });
+    });
+
+    it('claimIncludes matches array and space separated values case insensitively', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludes('roles', 'admin', 'auditor', { ignoreCase: true })
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { roles: ['Admin', 'AUDITOR'] });
+      expect((await agent.get('/protected')).statusCode).to.equal(200);
+
+      await login(agent, { roles: 'Admin AUDITOR' });
+      expect((await agent.get('/protected')).statusCode).to.equal(200);
+    });
+
+    it('claimEquals trims string values with trim', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimEquals('email', ' jane@example.org', { trim: true })
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { email: 'jane@example.org  ' });
+      const response = await agent.get('/protected');
+
+      expect(response.statusCode, response.text).to.equal(200);
+    });
+
+    it('claimEquals does not trim by default', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimEquals('email', 'jane@example.org')
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { email: 'jane@example.org ' });
+      const response = await agent.get('/protected');
+
+      expect(response.statusCode, response.text).to.equal(403);
+    });
+
+    it('claimIncludes trims values and splits on runs of whitespace with trim', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludes('roles', 'admin ', ' auditor', { trim: true })
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { roles: '  admin \t auditor ' });
+      expect((await agent.get('/protected')).statusCode).to.equal(200);
+
+      await login(agent, { roles: [' admin', 'auditor '] });
+      expect((await agent.get('/protected')).statusCode).to.equal(200);
+    });
+
+    it('trim and ignoreCase compose', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludes('roles', 'admin', { trim: true, ignoreCase: true })
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { roles: ' ADMIN ' });
+      expect((await agent.get('/protected')).statusCode).to.equal(200);
+    });
+
+    it('claimIncludes reports the original values when the check still fails', async () => {
+      const server = createApp(
+        auth({
+          ...defaultConfig,
+          authRequired: false,
+        }),
+        claimIncludes('roles', 'admin', 'finance', { ignoreCase: true })
+      );
+      const agent = request.agent(server);
+
+      await login(agent, { roles: ['Admin'] });
+      const response = await agent.get('/protected');
+
+      expect(response.statusCode, response.text).to.equal(403);
+      expect(response.body.err.reason).to.deep.equal({ claim: 'roles', expected: ['admin', 'finance'], actual: ['Admin'] });
+    });
   });
 });

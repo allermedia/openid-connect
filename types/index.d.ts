@@ -52,19 +52,51 @@ declare module '@aller/openid-connect' {
 	export function Store(): void;
 	export class Store {
 	}
-	export function requiresAuth(requiresLoginCheck?: typeof defaultRequiresLogin): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
 	/**
-	 * ID token calim equals
-	 * */
-	export function claimEquals(claim: any, expected: string | number | boolean | null): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
+	 * Require an authenticated end-user
+	 * @param requiresLoginCheck custom check returning `true` when login is required, or options
+	 * 
+	 */
+	export function requiresAuth(requiresLoginCheck?: ((req: import("express").Request) => boolean) | RequiresAuthOptions, options?: RequiresAuthOptions): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
 	/**
-	 * ID token claim includes
+	 * ID token claim equals. Comparison is strict unless `options.ignoreCase`
+	 * and/or `options.trim` are set, which normalize string values on both sides.
+	 * 
+	 */
+	export function claimEquals(claim: string, expected: string | number | boolean | null, options?: RequiresAuthOptions): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
+	/**
+	 * ID token claim includes — every expected value must be present in the
+	 * claim (an array or a space separated string). Comparison is strict unless
+	 * `options.ignoreCase` and/or `options.trim` are set. Pass an options object
+	 * as the last argument.
 	 * */
-	export function claimIncludes(claim: string, ...expected: (string | number | boolean | null)[]): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
-
-	export function claimCheck(func: CallableFunction): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
-
-	function defaultRequiresLogin(req: import("express").Request): boolean;
+	export function claimIncludes(claim: string, ...args: (string | number | boolean | null | RequiresAuthOptions)[]): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
+	/**
+	 * Custom claim check. The check function is only called for an authenticated
+	 * request. Return a truthy value to allow the request, a falsy value to reject
+	 * it with a `ForbiddenError`, or an `Error` (e.g. a `ForbiddenError` carrying a
+	 * reason) to reject it with that error.
+	 * 
+	 */
+	export function claimCheck(func: (req: import("express").Request, claims: IdTokenClaims) => unknown, options?: RequiresAuthOptions): (req: import("express").Request<import("express-serve-static-core").ParamsDictionary, any, any, import("qs").ParsedQs, Record<string, any>>, res: import("express").Response<any, Record<string, any>>, next: import("express").NextFunction) => Promise<void>;
+	export class UnauthorizedError extends Error {
+		/**
+		 * @param headers response headers the error handler should apply, e.g. a `WWW-Authenticate` challenge
+		 */
+		constructor(msg: string, headers?: Record<string, string>);
+		statusCode: number;
+		headers: Record<string, string>;
+	}
+	export class ForbiddenError extends Error {
+		/**
+		 * Raised by the claim check middlewares (`claimEquals`, `claimIncludes`,
+		 * `claimCheck`) when the request is authenticated but the claim check fails.
+		 * @param reason what failed, e.g. `{ claim, expected, actual }`
+		 */
+		constructor(msg: string, reason?: ForbiddenReason);
+		statusCode: number;
+		reason: ForbiddenReason;
+	}
   /**
    * Authorization parameters for the OIDC authorization request.
    * These parameters are passed to the authorization endpoint.
@@ -116,6 +148,56 @@ declare module '@aller/openid-connect' {
 	max_age?: number;
 	/**
 	 * Additional custom parameters.
+	 */
+	[key: string]: unknown;
+  }
+
+  /**
+   * Claims from an ID Token.
+   */
+  interface IdTokenClaims {
+	/**
+	 * Issuer Identifier.
+	 */
+	iss?: string;
+	/**
+	 * Subject Identifier.
+	 */
+	sub?: string;
+	/**
+	 * Audience(s).
+	 */
+	aud?: string | string[];
+	/**
+	 * Expiration time.
+	 */
+	exp?: number;
+	/**
+	 * Issued at time.
+	 */
+	iat?: number;
+	/**
+	 * Time when authentication occurred.
+	 */
+	auth_time?: number;
+	/**
+	 * Nonce value.
+	 */
+	nonce?: string;
+	/**
+	 * Access Token hash value.
+	 */
+	at_hash?: string;
+	/**
+	 * Code hash value.
+	 */
+	c_hash?: string;
+	/**
+	 * Session ID.
+	 */
+	sid?: string;
+	/**
+	 * Additional claims.
 	 */
 	[key: string]: unknown;
   }
@@ -544,6 +626,51 @@ declare module '@aller/openid-connect' {
 	 * Custom fetch method to pe passed to OpenID client
 	 */
 	customFetch?: (...args: Parameters<typeof globalThis.fetch>) => ReturnType<typeof globalThis.fetch>;
+  }
+
+  /**
+   * Per-middleware options for the `requiresAuth` family.
+   */
+  interface RequiresAuthOptions {
+	/**
+	 * Override {@link ConfigParams.errorOnRequiredAuth} for this middleware only:
+	 * `true` fails an unauthenticated request with an `UnauthorizedError` (401)
+	 * instead of triggering login, `false` triggers login even when the global
+	 * option is `true`. Default: the global option.
+	 */
+	errorOnRequiredAuth?: boolean;
+	/**
+	 * `claimEquals` and `claimIncludes` only: compare string values case
+	 * insensitively. Numbers, booleans and null are still matched strictly, and
+	 * `ForbiddenError#reason` reports the original values. Default `false`.
+	 */
+	ignoreCase?: boolean;
+	/**
+	 * `claimEquals` and `claimIncludes` only: trim surrounding whitespace from
+	 * string values before comparing. A space separated claim is then also split
+	 * on runs of whitespace. Other types are matched strictly, and
+	 * `ForbiddenError#reason` reports the original values. Default `false`.
+	 */
+	trim?: boolean;
+  }
+
+  /**
+   * What a failed claim check was looking for, attached to `ForbiddenError#reason`.
+   */
+  interface ForbiddenReason {
+	/**
+	 * The checked claim.
+	 */
+	claim?: string;
+	/**
+	 * The expected claim value (`claimEquals`) or values (`claimIncludes`).
+	 */
+	expected?: unknown;
+	/**
+	 * The actual claim value, `undefined` when the claim is missing.
+	 */
+	actual?: unknown;
+	[x: string]: unknown;
   }
 
   interface SessionHeaders {

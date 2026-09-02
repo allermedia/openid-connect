@@ -680,6 +680,51 @@ interface ConfigParams {
   customFetch?: (...args: Parameters<typeof globalThis.fetch>) => ReturnType<typeof globalThis.fetch>;
 }
 
+/**
+ * Per-middleware options for the `requiresAuth` family.
+ */
+interface RequiresAuthOptions {
+  /**
+   * Override {@link ConfigParams.errorOnRequiredAuth} for this middleware only:
+   * `true` fails an unauthenticated request with an `UnauthorizedError` (401)
+   * instead of triggering login, `false` triggers login even when the global
+   * option is `true`. Default: the global option.
+   */
+  errorOnRequiredAuth?: boolean;
+  /**
+   * `claimEquals` and `claimIncludes` only: compare string values case
+   * insensitively. Numbers, booleans and null are still matched strictly, and
+   * `ForbiddenError#reason` reports the original values. Default `false`.
+   */
+  ignoreCase?: boolean;
+  /**
+   * `claimEquals` and `claimIncludes` only: trim surrounding whitespace from
+   * string values before comparing. A space separated claim is then also split
+   * on runs of whitespace. Other types are matched strictly, and
+   * `ForbiddenError#reason` reports the original values. Default `false`.
+   */
+  trim?: boolean;
+}
+
+/**
+ * What a failed claim check was looking for, attached to `ForbiddenError#reason`.
+ */
+interface ForbiddenReason {
+  /**
+   * The checked claim.
+   */
+  claim?: string;
+  /**
+   * The expected claim value (`claimEquals`) or values (`claimIncludes`).
+   */
+  expected?: unknown;
+  /**
+   * The actual claim value, `undefined` when the claim is missing.
+   */
+  actual?: unknown;
+  [x: string]: unknown;
+}
+
 interface SessionHeaders {
   /**
    * timestamp (in secs) when the session was created.
@@ -926,7 +971,8 @@ export function auth(params?: ConfigParams): RequestHandler;
  *
  * ```
  */
-export function requiresAuth(requiresLoginCheck?: (req: Request) => boolean): RequestHandler;
+export function requiresAuth(options?: RequiresAuthOptions): RequestHandler;
+export function requiresAuth(requiresLoginCheck: (req: Request) => boolean, options?: RequiresAuthOptions): RequestHandler;
 
 interface BearerAuthParams {
   /**
@@ -993,6 +1039,9 @@ export function requiresBearerAuth(params: BearerAuthParams): RequestHandler;
 
 /**
  * Use this MW to protect a route based on the value of a specific claim.
+ * An anonymous request is treated as by `requiresAuth`, an authenticated
+ * request that fails the check calls `next()` with a `ForbiddenError` (403)
+ * carrying `{ claim, expected, actual }` as `reason`.
  *
  * ```js
  * const { claimEquals } = require('express-openid-connect');
@@ -1005,11 +1054,15 @@ export function requiresBearerAuth(params: BearerAuthParams): RequestHandler;
  *
  * @param claim The name of the claim
  * @param value The value of the claim, should be a primitive
+ * @param options Per-middleware options
  */
-export function claimEquals(claim: string, value: boolean | number | string | null): RequestHandler;
+export function claimEquals(claim: string, value: boolean | number | string | null, options?: RequiresAuthOptions): RequestHandler;
 
 /**
  * Use this MW to protect a route, checking that _all_ values are in a claim.
+ * An anonymous request is treated as by `requiresAuth`, an authenticated
+ * request that fails the check calls `next()` with a `ForbiddenError` (403)
+ * carrying `{ claim, expected, actual }` as `reason`.
  *
  * ```js
  * const { claimIncludes } = require('express-openid-connect');
@@ -1021,12 +1074,16 @@ export function claimEquals(claim: string, value: boolean | number | string | nu
  * ```
  *
  * @param claim The name of the claim
- * @param args Claim values that must all be included
+ * @param args Claim values that must all be included, optionally followed by per-middleware options
  */
-export function claimIncludes(claim: string, ...args: (boolean | number | string | null)[]): RequestHandler;
+export function claimIncludes(claim: string, ...args: (boolean | number | string | null | RequiresAuthOptions)[]): RequestHandler;
 
 /**
  * Use this MW to protect a route, providing a custom function to check.
+ * The function is only called for an authenticated request. Return a truthy
+ * value to allow the request, a falsy value to reject it with a
+ * `ForbiddenError` (403), or an `Error` — e.g. a `ForbiddenError` carrying a
+ * `reason` — to reject it with that error.
  *
  * ```js
  * const { claimCheck } = require('express-openid-connect');
@@ -1039,7 +1096,7 @@ export function claimIncludes(claim: string, ...args: (boolean | number | string
  *
  * ```
  */
-export function claimCheck(checkFn: (req: Request, claims: IdTokenClaims) => boolean): RequestHandler;
+export function claimCheck(checkFn: (req: Request, claims: IdTokenClaims) => unknown, options?: RequiresAuthOptions): RequestHandler;
 
 /**
  * Use this MW to attempt silent login (`prompt=none`) but not require authentication.

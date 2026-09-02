@@ -1,6 +1,6 @@
 {
   "name": "@aller/openid-connect",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Express middleware to protect web applications using OpenID Connect.",
   "type": "module",
   "module": "./src/index.js",
@@ -24,7 +24,8 @@
   "files": [
     "src",
     "types/index.d.ts",
-    "types/index.d.ts.map"
+    "types/index.d.ts.map",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "mocha --max-http-header-size=16384",
