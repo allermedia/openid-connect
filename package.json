@@ -1,6 +1,6 @@
 {
   "name": "@aller/openid-connect",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Express middleware to protect web applications using OpenID Connect.",
   "type": "module",
   "module": "./src/index.js",
@@ -28,13 +28,15 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "mocha --max-http-header-size=16384",
-    "posttest": "npm run lint && npm run build",
-    "lint": "eslint . --cache && prettier . -c && npm run test:md",
+    "test": "mocha",
+    "posttest": "npm run build && npm run lint && npm run test:md",
+    "lint": "eslint . --cache && prettier . -c",
     "test:md": "texample",
     "cov:html": "c8 -n src -r html -r text mocha",
     "test:lcov": "c8 -n src -r lcov -r text mocha",
-    "build": "dts-buddy"
+    "build": "dts-buddy && npm run toc",
+    "prepack": "npm run build",
+    "toc": "toc README.md"
   },
   "dependencies": {
     "cookie": "^2.0.1",
@@ -45,10 +47,12 @@
   },
   "overrides": {
     "mocha": {
+      "serialize-javascript": "^7.1.0",
       "yargs": "^18.1.0"
     }
   },
   "devDependencies": {
+    "@0dep/toc": "^1.0.1",
     "@eslint/js": "^10.0.1",
     "@types/chai": "^5.2.3",
     "@types/debug": "^4.1.12",

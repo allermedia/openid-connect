@@ -1,5 +1,12 @@
 # Change Log
 
+## v0.3.2 (2026-09-16)
+
+### Additions
+
+- README API section documents every export with its options and defaults, plus the default routes and how to override them, and a table of contents generated with `npm run toc` (`@0dep/toc`)
+- `prepack` script runs the type build so published packages include a fresh `types/index.d.ts` and its source map
+
 ## v0.3.1 (2026-09-02)
 
 ### Additions

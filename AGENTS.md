@@ -10,20 +10,25 @@ Node >= 22 required (`.nvmrc` pins 22). Type: `module`.
 
 ## Commands
 
-- `npm test` — Mocha test suite (extension `js`, recursive, BDD Gherkin-style via `mocha-cakes-2`). Posttest runs `lint` + `build`.
-- **Always lint after running tests.** `npm test` already chains `posttest` → `npm run lint && npm run build`, so it's covered. If you run Mocha directly (e.g. `npx mocha test/foo.tests.js`), follow up with `npm run lint` before declaring a task done.
-- `npm run lint` — ESLint (`eslint . --cache`) + Prettier check + `texample` (executes README fenced code blocks).
-- `npm run build` — `dts-buddy` emits `types/index.d.ts` from JSDoc in `src/`.
+- `npm test` — Mocha test suite (extension `js`, recursive, BDD Gherkin-style via `mocha-cakes-2`). Posttest runs `build` + `lint` + `test:md`.
+- **Always lint after running tests.** `npm test` already chains `posttest` → `npm run build && npm run lint && npm run test:md`, so it's covered. If you run Mocha directly (e.g. `npx mocha test/foo.tests.js`), follow up with `npm run lint` before declaring a task done.
+- `npm run lint` — ESLint (`eslint . --cache`) + Prettier check. `npm run test:md` — `texample` executes README fenced code blocks (part of `posttest`, not `lint`).
+- `npm run build` — `dts-buddy` emits `types/index.d.ts` from JSDoc in `src/`, then regenerates the README table of contents. Also runs as `prepack`, so `npm pack`/`npm publish` always ship fresh declarations and the gitignored `types/index.d.ts.map`.
 - `npm run cov:html` / `npm run test:lcov` — Coverage via `c8` over `src`.
+- `npm run toc` — `@0dep/toc` regenerates the README table of contents between the `<!-- toc -->` / `<!-- /toc -->` markers. Run it after adding or renaming README headings.
 - Single test file: `npx mocha test/login.tests.js`. Grep by scenario: `npx mocha --grep "default configuration"`.
 - Scenario globals (`Feature`, `Scenario`, `Given`, `When`, `Then`, `And`, `But`, `expect`) are provided by `mocha-cakes-2` + `chai/register-expect.js` — see `.mocharc.json` and `eslint.config.js`.
 - `test/helpers/setup.js` calls `nock.disableNetConnect()` with localhost allowed — all issuer/discovery HTTP must be mocked via `nock` (see `test/helpers/openid-helper.js`).
 
 ## Architecture
 
-Entry point `src/index.js` exports three things: `auth` (the middleware router factory), `attemptSilentLogin`, and the `requiresAuth` family (`requiresAuth`, `claimEquals`, `claimIncludes`, `claimCheck`).
+Entry point `src/index.js` exports: `auth` (the middleware router factory), `attemptSilentLogin`, the `requiresAuth` family (`requiresAuth`, `claimEquals`, `claimIncludes`, `claimIncludesAny`, `claimCheck`), `requiresBearerAuth` (stateless bearer-token protection for APIs, `src/middleware/requiresBearerAuth.js`), the `UnauthorizedError` / `ForbiddenError` classes (`src/errors.js`), and the `Store` base class for custom session stores (`src/store.js`). Claim checks answer 401 for anonymous requests and 403 for authenticated users that fail the check.
 
 `auth(params)` returns an `express.Router` that, in order, mounts: `appSession` (session load/save) → a middleware attaching `req.oidc: RequestContext` and `res.oidc: ResponseContext` → the configured `routes.login`/`logout`/`callback`/`backchannelLogout` handlers → optionally `requiresAuth()` (when `authRequired`, default `true`) → optionally `attemptSilentLogin()`. Handler bodies live on `ResponseContext` (`src/context.js`) — the routes are one-liners delegating to `res.oidc.login()` etc.
+
+### Default routes
+
+Documented in the README "Default routes" section. Defaults live in the `routes` Joi schema in `src/config.js` and are mounted in `src/middleware/auth.js`; `enforceLeadingSlash` normalizes every path and `false` skips mounting `login`/`logout`/`callback`.
 
 ### Config (`src/config.js`)
 
