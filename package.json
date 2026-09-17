@@ -36,7 +36,7 @@
     "test:lcov": "c8 -n src -r lcov -r text mocha",
     "build": "dts-buddy && npm run toc",
     "prepack": "npm run build",
-    "toc": "toc README.md"
+    "toc": "toc -c README.md"
   },
   "dependencies": {
     "cookie": "^2.0.1",
@@ -52,7 +52,7 @@
     }
   },
   "devDependencies": {
-    "@0dep/toc": "^1.0.1",
+    "@0dep/toc": "^1.1.0",
     "@eslint/js": "^10.0.1",
     "@types/chai": "^5.2.3",
     "@types/debug": "^4.1.12",
