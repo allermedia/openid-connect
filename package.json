@@ -74,7 +74,7 @@
     "mocha-cakes-2": "^3.3.0",
     "nock": "^14.0.10",
     "prettier": "^3.6.2",
-    "supertest": "7.2.2",
+    "supertest": "^7.3.0",
     "texample": "^1.0.0"
   },
   "peerDependencies": {
