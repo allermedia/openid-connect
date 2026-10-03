@@ -1,6 +1,6 @@
 {
   "name": "@aller/openid-connect",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Express middleware to protect web applications using OpenID Connect.",
   "type": "module",
   "module": "./src/index.js",
@@ -13,13 +13,13 @@
   },
   "author": {
     "name": "Aller Media",
-    "url": "https://github.com/allermedia"
+    "url": "https://github.com/allernordic"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/allermedia/openid-connect.git"
+    "url": "git+https://github.com/allernordic/openid-connect.git"
   },
-  "homepage": "https://github.com/allermedia/openid-connect",
+  "homepage": "https://github.com/allernordic/openid-connect",
   "license": "MIT",
   "files": [
     "src",

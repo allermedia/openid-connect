@@ -1,5 +1,9 @@
 # Change Log
 
+## v0.3.3 (2026-10-03)
+
+- change origin to Aller Media Nordic repository
+
 ## v0.3.2 (2026-09-16)
 
 ### Additions
